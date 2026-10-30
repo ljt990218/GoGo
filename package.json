@@ -1,0 +1,26 @@
+{
+  "name": "gogo-review",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:frontend": "vite --host 127.0.0.1 --port 5178 --strictPort",
+    "dev:backend": "cd backend && uv run --frozen python run.py",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 5178 --strictPort"
+  },
+  "dependencies": {
+    "@sabaki/go-board": "1.4.3",
+    "@sabaki/sgf": "3.5.0",
+    "vue": "3.5.22"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.1",
+    "typescript": "5.9.3",
+    "vite": "7.1.12"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
