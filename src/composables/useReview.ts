@@ -216,17 +216,18 @@ export function useReview() {
     }
   }
 
-  async function runAnalysis(explanationOnly = false) {
+  async function runAnalysis(explanationOnly = false, candidateIndex = 0) {
     const game = currentGame.value
     const snapshot = position.value
     if (!game || !snapshot || busy.value || batch.value || loadingGame.value || saving.value || deletingId.value === game.gameId) return
-    await analyzeAt(game, moveIndex.value, snapshot.toPlay, explanationOnly)
+    await analyzeAt(game, moveIndex.value, snapshot.toPlay, explanationOnly, candidateIndex)
   }
 
-  async function analyzeAt(game: GameRecord, index: number, toPlay: 'black' | 'white', explanationOnly = false) {
+  async function analyzeAt(game: GameRecord, index: number, toPlay: 'black' | 'white', explanationOnly = false, candidateIndex = 0) {
     const target = recordKey(game.gameId, index)
     let record = records.value[target]
     if (explanationOnly && !record) return
+    if (explanationOnly && !record.analysis.candidates[candidateIndex]) return
     const request: PositionRequest = { sgfText: game.sgfText, moveIndex: index, rules: game.rules, komi: game.komi }
     busy.value = { gameId: game.gameId, moveIndex: index, stage: explanationOnly ? 'explaining' : 'analyzing' }
     delete errors.value[target]
@@ -235,14 +236,15 @@ export function useReview() {
       if (!explanationOnly) {
         const analysis = await analyzePosition(request)
         validateAnalysis(analysis, game.boardSize, index, toPlay)
-        record = { gameId: game.gameId, moveIndex: index, analysis, explanation: null, aiModel: null, explainedAt: null }
+        record = { gameId: game.gameId, moveIndex: index, analysis, candidateIndex: 0, explanation: null, aiModel: null, explainedAt: null }
         records.value = { ...records.value, [target]: record }
         source.value[target] = 'fresh'
         analysisSaved = await persistRecord(record)
       }
       busy.value = { gameId: game.gameId, moveIndex: index, stage: 'explaining' }
-      const explanation = await explainPosition(request, record.analysis)
-      if (typeof explanation.explanation !== 'string' || !explanation.explanation.trim() ||
+      const explanation = await explainPosition(request, record.analysis, candidateIndex)
+      if (explanation.candidateIndex !== candidateIndex ||
+          typeof explanation.explanation !== 'string' || !explanation.explanation.trim() ||
           typeof explanation.aiModel !== 'string' || !explanation.aiModel.trim() ||
           typeof explanation.explainedAt !== 'string' || !Number.isFinite(Date.parse(explanation.explainedAt))) {
         throw new Error('AI 返回了空解释或无效结果，请重新生成解释')

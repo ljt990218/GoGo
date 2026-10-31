@@ -12,6 +12,7 @@ const props = defineProps<{
   moveIndex: number
   toPlay: Player
   selectedIndex: number
+  pendingCandidateIndex: number | null
   variation: Candidate | null
   detailsOpen: boolean
   stage: 'analyzing' | 'explaining' | null
@@ -23,7 +24,8 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   analyze: []
-  explain: []
+  explain: [candidateIndex: number]
+  analyzeCandidate: [index: number]
   save: []
   openDetails: []
   closeDetails: []
@@ -33,6 +35,17 @@ const emit = defineEmits<{
 }>()
 const best = computed(() => props.record?.analysis.candidates[0] ?? null)
 const selected = computed(() => props.record?.analysis.candidates[props.selectedIndex] ?? null)
+const explanationIndex = computed(() => props.record?.candidateIndex ?? 0)
+const explanationLabel = computed(() => {
+  const candidate = props.record?.analysis.candidates[explanationIndex.value]
+  return props.record?.explanation && candidate
+    ? `${'ABC'[explanationIndex.value]} ${coordinate(candidate.point, props.size)}`
+    : ''
+})
+function analyzeCandidate(index: number) {
+  if (props.disabled || props.stage || props.pendingCandidateIndex !== null) return
+  emit('analyzeCandidate', index)
+}
 const normalizedExplanation = computed(() => (props.record?.explanation?.trim() ?? '').replace(/\n\s*\n/g, '\n'))
 const coreExplanation = computed(() => {
   const text = normalizedExplanation.value
@@ -104,8 +117,11 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
       </div>
       <div v-if='record' class='candidate-table' role='table' aria-label='候选点，全部数值为黑方视角'>
         <div class='candidate-row table-head' role='row'><span role='columnheader'>选点</span><span role='columnheader'>黑方胜率</span><span role='columnheader'>黑方预计领先</span></div>
-        <div v-for='(candidate, index) in record.analysis.candidates' :key='index' :class='["candidate-row", { "candidate-selected": selectedIndex === index }]' role='row' @mouseenter='emit("previewPoint", candidate.point)' @mouseleave='emit("previewPoint", null)'>
-          <span role='cell'><button type='button' class='candidate-select' :aria-pressed='selectedIndex === index' :aria-label='`选择候选 ${"ABC"[index]} ${coordinate(candidate.point, size)}`' @click='emit("selectCandidate", index)' @focus='emit("previewPoint", candidate.point)' @blur='emit("previewPoint", null)'><span :class='["candidate-letter", { "primary-letter": index === 0 }]'>{{ 'ABC'[index] }}</span><strong>{{ coordinate(candidate.point, size) }}</strong></button></span>
+        <div v-for='(candidate, index) in record.analysis.candidates' :key='index' :class='["candidate-row", { "candidate-selected": selectedIndex === index }]' role='row' @click='emit("selectCandidate", index)' @mouseenter='emit("previewPoint", candidate.point)' @mouseleave='emit("previewPoint", null)'>
+          <span role='cell' class='candidate-point-cell'>
+            <button type='button' class='candidate-select' :aria-pressed='selectedIndex === index' :aria-label='`选择候选 ${"ABC"[index]} ${coordinate(candidate.point, size)}`' @click.stop='emit("selectCandidate", index)' @focus='emit("previewPoint", candidate.point)' @blur='emit("previewPoint", null)'><span :class='["candidate-letter", { "primary-letter": index === 0 }]'>{{ 'ABC'[index] }}</span><strong>{{ coordinate(candidate.point, size) }}</strong></button>
+            <button v-if='index > 0 || (selectedIndex === index && record.explanation && explanationIndex !== index) || pendingCandidateIndex === index' type='button' class='candidate-analyze' :disabled='disabled || !!stage || pendingCandidateIndex !== null' :aria-busy='pendingCandidateIndex === index' :aria-label='`分析候选 ${"ABC"[index]} ${coordinate(candidate.point, size)}`' @click.stop='analyzeCandidate(index)'>{{ pendingCandidateIndex === index ? '分析中…' : '分析此点' }}</button>
+          </span>
           <span role='cell'>{{ formatWinRate(candidate.blackWinRate) }}</span>
           <span role='cell'>{{ formatScoreLead(candidate.blackScoreLead) }}<small> 目</small></span>
         </div>
@@ -115,7 +131,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
 
     <section class='explanation-section' aria-label='AI 分析结果' :aria-busy='stage === "explaining"'>
       <div class='section-row'>
-        <h3>AI 分析</h3>
+        <h3>AI 分析<span v-if='explanationLabel'> · {{ explanationLabel }}</span></h3>
         <span v-if='stage' class='analysis-stage' role='status'><span class='spinner' aria-hidden='true'></span>{{ stage === 'analyzing' ? '引擎分析中' : '解释生成中' }}</span>
         <button v-else-if='record?.explanation' type='button' class='text-button' @click='emit("openDetails")'>{{ isExcerpt ? '节选 · 查看全文' : '查看详情' }}</button>
         <span v-else class='ai-tag'>AI 生成</span>
@@ -124,7 +140,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
       <div v-else class='analysis-empty'>
         <h3>{{ stage === 'explaining' ? '正在生成棋理解释' : record ? '引擎结果已就绪' : '从当前局面开始' }}</h3>
         <p>{{ stage === 'explaining' ? '推荐与指标已显示，解释将在此处直接呈现。' : record ? '生成中文解释，了解推荐选点的依据与取舍。' : '点击上方分析，查看推荐选点、关键指标与 AI 解释。' }}</p>
-        <button v-if='record && stage !== "explaining"' class='button secondary' :disabled='disabled' @click='emit("explain")'>{{ error ? '重试生成解释' : '生成解释' }}</button>
+        <button v-if='record && stage !== "explaining"' class='button secondary' :disabled='disabled' @click='emit("explain", explanationIndex)'>{{ error ? '重试生成解释' : '生成解释' }}</button>
       </div>
     </section>
 
@@ -144,7 +160,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
     <p v-if='error' class='notice error' role='alert'>{{ error }}</p>
     <template v-if='record'>
       <section class='drawer-section'>
-        <div class='section-row'><h3>完整 AI 解释</h3><button type='button' class='text-button' :disabled='disabled' @click='emit("explain")'>{{ record.explanation ? '重新生成解释' : '生成解释' }}</button></div>
+        <div class='section-row'><h3>完整 AI 解释<span v-if='explanationLabel'> · {{ explanationLabel }}</span></h3><button type='button' class='text-button' :disabled='disabled' @click='emit("explain", explanationIndex)'>{{ record.explanation ? '重新生成解释' : '生成解释' }}</button></div>
         <p v-if='record.explanation' class='explanation'><template v-for='(part, index) in fullParts' :key='index'><button v-if='part.point' type='button' class='coordinate-link' :aria-label='`在棋盘定位 ${part.text}`' @mouseenter='emit("previewPoint", part.point)' @mouseleave='emit("previewPoint", null)' @focus='emit("previewPoint", part.point)' @blur='emit("previewPoint", null)'>{{ part.text }}</button><template v-else>{{ part.text }}</template></template></p>
         <p v-else class='micro'>{{ stage === 'explaining' ? '正在生成解释…' : '尚未生成解释。' }}</p>
         <p v-if='record.aiModel && record.explainedAt' class='micro'>{{ record.aiModel }} · {{ time(record.explainedAt) }}</p>

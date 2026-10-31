@@ -40,6 +40,7 @@ export interface AnalysisRecord {
   gameId: string
   moveIndex: number
   analysis: AnalysisResult
+  candidateIndex?: number
   explanation: string | null
   aiModel: string | null
   explainedAt: string | null
@@ -53,6 +54,7 @@ export interface PositionRequest {
 }
 
 export interface ExplanationResult {
+  candidateIndex: number
   explanation: string
   aiModel: string
   explainedAt: string

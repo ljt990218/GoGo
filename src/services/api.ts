@@ -37,8 +37,8 @@ export function analyzePosition(request: PositionRequest) {
   return post<AnalysisResult>('/api/analyze', request, 130_000)
 }
 
-export function explainPosition(request: PositionRequest, analysis: AnalysisResult) {
-  return post<ExplanationResult>('/api/explain', { ...request, analysis }, 70_000)
+export function explainPosition(request: PositionRequest, analysis: AnalysisResult, candidateIndex = 0) {
+  return post<ExplanationResult>('/api/explain', { ...request, analysis, candidateIndex }, 70_000)
 }
 
 export interface AnalysisSettings {
@@ -58,4 +58,48 @@ export function readSettings() {
 
 export function saveSettings(settings: Omit<AnalysisSettings, 'apiKeyConfigured'> & { apiKey: string }) {
   return post<AnalysisSettings>('/api/settings/save', settings, 10_000)
+}
+
+export type EngineTier = 'light' | 'balanced' | 'advanced'
+
+export interface EngineStatus {
+  platform: 'macos-arm64' | 'macos-x64' | 'windows-x64' | 'unsupported'
+  options: {
+    tier: EngineTier
+    name: string
+    description: string
+    available: boolean
+    message: string
+  }[]
+  installedTier: EngineTier | null
+  state: 'idle' | 'downloading-engine' | 'extracting' | 'downloading-model' | 'configuring' | 'completed' | 'failed'
+  tier: EngineTier | null
+  downloadedBytes: number
+  totalBytes: number | null
+  message: string
+  katagoPath: string
+  katagoModelPath: string
+}
+
+export interface SettingsTestStage {
+  state: 'passed' | 'failed' | 'skipped'
+  elapsedMs: number
+  message: string
+}
+
+export interface SettingsTestResult {
+  katago: SettingsTestStage
+  ai: SettingsTestStage
+}
+
+export function readEngineStatus() {
+  return post<EngineStatus>('/api/engine/status', {}, 10_000)
+}
+
+export function installEngine(tier: EngineTier) {
+  return post<EngineStatus>('/api/engine/install', { tier }, 10_000)
+}
+
+export function testSettings() {
+  return post<SettingsTestResult>('/api/settings/test', {}, 200_000)
 }

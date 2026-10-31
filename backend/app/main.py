@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from dataclasses import replace
 
 import httpx
 from fastapi import FastAPI, Request
@@ -12,13 +13,16 @@ from starlette.exceptions import HTTPException
 from .config import Settings
 from .deepseek import explain
 from .errors import AppError, invalid
+from .engine_install import EmptyRequest, EngineInstaller, InstallRequest
 from .katago import analyze
 from .models import AnalysisResult, ExplainRequest, ExplanationResult, PositionRequest
 from .sgf import parse_position
+from .settings_test import test_settings
 
 from .preferences import SavePreferences, apply_preferences, load_preferences, public_preferences, save_preferences
 
-settings = load_preferences(Settings())
+installer = EngineInstaller()
+settings = installer.label_settings(load_preferences(Settings()))
 
 
 @asynccontextmanager
@@ -27,7 +31,10 @@ async def lifespan(app: FastAPI):
     async with httpx.AsyncClient(trust_env=False, follow_redirects=False) as client:
         app.state.client = client
         app.state.operation_lock = asyncio.Lock()
-        yield
+        try:
+            yield
+        finally:
+            await installer.close()
 
 
 app = FastAPI(title='GoGo 本地分析服务', version='0.1.0', lifespan=lifespan, debug=False)
@@ -80,7 +87,7 @@ async def unexpected_error_handler(_request: Request, _error: Exception):
 async def analyze_position(payload: PositionRequest, request: Request):
     lock = request.app.state.operation_lock
     if lock.locked():
-        raise AppError('KATAGO_UNAVAILABLE', '已有局面正在处理，请等待完成后重试', 503)
+        raise AppError('KATAGO_UNAVAILABLE', '安装、分析或测试正在进行，请等待完成后重试', 503)
     async with lock:
         position = await run_in_threadpool(parse_position, payload)
         return await analyze(request.app.state.client, settings, payload, position)
@@ -90,7 +97,7 @@ async def analyze_position(payload: PositionRequest, request: Request):
 async def explain_position(payload: ExplainRequest, request: Request):
     lock = request.app.state.operation_lock
     if lock.locked():
-        raise AppError('AI_UNAVAILABLE', '已有局面正在处理，请等待完成后重试', 502)
+        raise AppError('AI_UNAVAILABLE', '安装、分析或测试正在进行，请等待完成后重试', 502)
     async with lock:
         position = await run_in_threadpool(parse_position, payload)
         try:
@@ -110,12 +117,39 @@ async def update_settings(payload: SavePreferences, request: Request):
     global settings
     lock = request.app.state.operation_lock
     if lock.locked():
-        raise invalid('局面正在处理，请完成后再保存配置')
+        raise invalid('安装、分析或测试正在进行，请完成后再保存配置')
     async with lock:
         try:
-            updated = apply_preferences(settings, payload)
+            updated = installer.label_settings(apply_preferences(settings, payload))
         except ValueError as error:
             raise invalid(str(error)) from None
         await run_in_threadpool(save_preferences, updated)
         settings = updated
         return public_preferences(settings)
+
+
+async def configure_installed_engine(binary, weights):
+    global settings
+    updated = installer.label_settings(replace(settings, katago_path=binary, katago_model_path=weights))
+    await run_in_threadpool(save_preferences, updated)
+    settings = updated
+
+
+@app.post('/api/engine/status')
+async def engine_status(payload: EmptyRequest):
+    return installer.status(settings)
+
+
+@app.post('/api/engine/install')
+async def install_engine(payload: InstallRequest, request: Request):
+    await installer.start(payload.tier, request.app.state.operation_lock, configure_installed_engine, settings)
+    return installer.status(settings)
+
+
+@app.post('/api/settings/test')
+async def check_settings(payload: EmptyRequest, request: Request):
+    lock = request.app.state.operation_lock
+    if lock.locked():
+        raise AppError('ENGINE_BUSY', '安装、分析或测试正在进行，请完成后再测试', 409)
+    async with lock:
+        return await test_settings(request.app.state.client, settings)

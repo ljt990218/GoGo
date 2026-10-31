@@ -1,0 +1,52 @@
+{
+  "engineVersion": "1.18.1",
+  "engines": {
+    "macos-arm64": {
+      "url": "https://github.com/sanderland/katrain/releases/download/v1.20.0/KaTrain-1.20.0-arm64.dmg",
+      "size": 90675425,
+      "sha256": "9f6c6f04e4b2ae526b2107e6b25d070c270099005eb89dde7d9b94d4c83fd0e6",
+      "format": "dmg",
+      "bundle": "KaTrain.app",
+      "minimumMacOS": "26.0",
+      "executable": "KaTrain.app/Contents/Frameworks/katrain/KataGo/katago-osx"
+    },
+    "macos-x64": {
+      "url": "https://github.com/sanderland/katrain/releases/download/v1.20.0/KaTrain-1.20.0-x86_64.dmg",
+      "size": 89589838,
+      "sha256": "f48041480ca37c1d492cd4c38e342a8d3e9299880d8a26d8ff689df631e9b301",
+      "format": "dmg",
+      "bundle": "KaTrain.app",
+      "minimumMacOS": "15.0",
+      "executable": "KaTrain.app/Contents/Frameworks/katrain/KataGo/katago-osx"
+    },
+    "windows-x64": {
+      "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-eigen-windows-x64.zip",
+      "size": 5903072,
+      "sha256": "074485cf150c38aa3bb14ac9f54f2952ffefbceb44673709bbb8a83650bf95d6",
+      "format": "zip",
+      "bundle": null,
+      "minimumMacOS": null,
+      "executable": "katago.exe"
+    }
+  },
+  "models": {
+    "light": {
+      "name": "kata1-b10c128-s108710656-d44395882",
+      "url": "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b10c128-s108710656-d44395882.txt.gz",
+      "size": 14488412,
+      "sha256": "76c71239f0ce9747ea8e83ebc52b806ad9ab010160c19ffd7164840040dfbeb3"
+    },
+    "balanced": {
+      "name": "kata1-b18c384nbt-s9996604416-d4316597426",
+      "url": "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz",
+      "size": 97898094,
+      "sha256": "9d7a6afed8ff5b74894727e156f04f0cd36060a24824892008fbb6e0cba51f1d"
+    },
+    "advanced": {
+      "name": "kata1-b28c512nbt-s13255194368-d5935380940",
+      "url": "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b28c512nbt-s13255194368-d5935380940.bin.gz",
+      "size": 271440852,
+      "sha256": "c5bca453d7b08ea8df6546439325d4dd681e77d975e1da3f7593d771147b73bc"
+    }
+  }
+}

@@ -28,6 +28,11 @@ const trialStage = ref<'analyzing' | 'explaining' | null>(null)
 const trialAnalysisError = ref('')
 let trialVersion = 0
 const displayedRecord = computed(() => trying.value ? trialRecord.value : currentRecord.value)
+const candidateRequest = shallowRef<{ analysis: AnalysisRecord['analysis'], candidateIndex: number } | null>(null)
+const pendingCandidateIndex = computed(() => {
+  const request = candidateRequest.value
+  return request && request.analysis === displayedRecord.value?.analysis ? request.candidateIndex : null
+})
 const displayedMoveIndex = computed(() => moveIndex.value + Math.max(0, trialPositions.value.length - 1))
 watch(trialPositions, () => {
   trialVersion++
@@ -38,12 +43,13 @@ watch(trialPositions, () => {
   clearPreview()
 }, { flush: 'sync' })
 onUnmounted(() => { trialVersion++ })
-async function analyzeTrial(explanationOnly = false) {
+async function analyzeTrial(explanationOnly = false, candidateIndex = 0) {
   const game = currentGame.value
   const gameParsed = parsed.value
   const snapshot = boardPosition.value
   if (!trying.value || !game || !gameParsed || !snapshot || trialStage.value || busy.value || batch.value || loadingGame.value || saving.value) return
   if (explanationOnly && !trialRecord.value) return
+  if (explanationOnly && !trialRecord.value!.analysis.candidates[candidateIndex]) return
   const version = trialVersion
   const moves = trialPositions.value.slice(1).map(item => item.lastMove!)
   const request: PositionRequest = {
@@ -58,15 +64,17 @@ async function analyzeTrial(explanationOnly = false) {
       const analysis = await analyzePosition(request)
       if (version !== trialVersion) return
       validateAnalysis(analysis, game.boardSize, request.moveIndex, snapshot.toPlay)
-      record = { gameId: game.gameId, moveIndex: request.moveIndex, analysis, explanation: null, aiModel: null, explainedAt: null }
+      record = { gameId: game.gameId, moveIndex: request.moveIndex, analysis, candidateIndex: 0, explanation: null, aiModel: null, explainedAt: null }
       trialRecord.value = record
+      selectedCandidateIndex.value = 0
       clearPreview()
     }
     if (!record || version !== trialVersion) return
     trialStage.value = 'explaining'
-    const explanation = await explainPosition(request, record.analysis)
+    const explanation = await explainPosition(request, record.analysis, candidateIndex)
     if (version !== trialVersion) return
-    if (typeof explanation.explanation !== 'string' || !explanation.explanation.trim() ||
+    if (explanation.candidateIndex !== candidateIndex ||
+        typeof explanation.explanation !== 'string' || !explanation.explanation.trim() ||
         typeof explanation.aiModel !== 'string' || !explanation.aiModel.trim() ||
         typeof explanation.explainedAt !== 'string' || !Number.isFinite(Date.parse(explanation.explainedAt))) {
       throw new Error('AI 返回了空解释或无效结果，请重新生成解释')
@@ -80,10 +88,19 @@ async function analyzeTrial(explanationOnly = false) {
     trialStage.value = null
   }
 }
-function analyzeDisplayed(explanationOnly = false) {
-  if (trialStage.value) return
-  if (trying.value) void analyzeTrial(explanationOnly)
-  else void runAnalysis(explanationOnly)
+async function analyzeDisplayed(explanationOnly = false, candidateIndex = 0) {
+  if (candidateRequest.value || trialStage.value || busy.value || batch.value || loadingGame.value || saving.value || deletingId.value === currentGame.value?.gameId) return
+  const record = displayedRecord.value
+  if (explanationOnly) {
+    if (!record?.analysis.candidates[candidateIndex]) return
+    candidateRequest.value = { analysis: record.analysis, candidateIndex }
+  }
+  try {
+    if (trying.value) await analyzeTrial(explanationOnly, candidateIndex)
+    else await runAnalysis(explanationOnly, candidateIndex)
+  } finally {
+    candidateRequest.value = null
+  }
 }
 function returnToGame() {
   trialPositions.value = []
@@ -163,6 +180,12 @@ function selectCandidate(index: number) {
   clearPreview()
   selectedCandidateIndex.value = index
 }
+function analyzeCandidate(index: number) {
+  if (candidateRequest.value || trialStage.value || busy.value || batch.value || loadingGame.value || saving.value || deletingId.value === currentGame.value?.gameId) return
+  if (!displayedRecord.value?.analysis.candidates[index]) return
+  selectCandidate(index)
+  void analyzeDisplayed(true, index)
+}
 function previewLine(candidate: Candidate) {
   if (previewVariation.value === candidate) {
     clearPreview()
@@ -174,15 +197,15 @@ function previewLine(candidate: Candidate) {
   selectedCandidateIndex.value = index
   previewVariation.value = candidate
 }
-function settingsSaved() {
-  settingsVersion.value++
+function settingsSaved(source: 'home' | 'dialog') {
+  if (source === 'dialog') settingsVersion.value++
   void loadBatchSettings()
 }
 function exitPreview(event: KeyboardEvent) {
   if (event.key === 'Escape' && !settingsOpen.value && !analysisDetailsOpen.value && !batchOpen.value && !statusOpen.value && !draft.value && !deleteTarget.value) clearPreview()
 }
 const page = ref(window.location.hash === '#analysis' ? 'analysis' : 'home')
-watch([key, currentRecord, page], () => {
+watch([key, () => currentRecord.value?.analysis, page], () => {
   clearPreview()
   selectedCandidateIndex.value = 0
 }, { flush: 'sync' })
@@ -237,7 +260,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
 </script>
 
 <template>
-  <div :class='["app-shell", { "review-shell": page === "analysis" }]' :inert='draft || deleteTarget || settingsOpen || analysisDetailsOpen || batchOpen || statusOpen ? true : undefined'>
+  <div :class='["app-shell", { "review-shell": page === "analysis", "home-shell": page === "home" }]' :inert='draft || deleteTarget || settingsOpen || analysisDetailsOpen || batchOpen || statusOpen ? true : undefined'>
     <header class='app-header'>
       <a class='brand' href='#home' @click.prevent='goHome' aria-label='GoGo 围棋局面分析助手'>
         <span class='brand-mark' aria-hidden='true'><i></i><i></i></span>
@@ -280,21 +303,25 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
 
     <main :class='page === "home" ? "home-page" : "workspace"'>
       <section v-if='page === "home"' class='home-intro'>
-        <span class='section-label'>GoGo · 围棋复盘</span>
-        <h1>每一盘，都值得再看一遍。</h1>
-        <p>从一盘棋开始，找到下一手的方向。</p>
-        <button class='button primary' :disabled='importing || initializing || !!deletingId' @click='fileInput?.click()'>＋ 导入 SGF 棋谱</button>
-        <span class='micro'>支持 9 / 13 / 19 路 · 最大 2 MB</span>
+        <div class='home-intro-copy'>
+          <span class='section-label'>GoGo · 围棋复盘</span>
+          <h1>每一盘，都值得再看一遍。</h1>
+          <p>从一盘棋开始，找到下一手的方向。</p>
+        </div>
+        <div class='home-intro-actions'>
+          <button class='button primary' :disabled='importing || initializing || !!deletingId' @click='fileInput?.click()'>＋ 导入 SGF 棋谱</button>
+          <span class='micro'>支持 9 / 13 / 19 路 · 最大 2 MB</span>
+        </div>
       </section>
       <section v-if='page === "home"' class='home-settings'>
         <details>
-          <summary>项目分析配置</summary>
-          <div :inert='!!batch || !!busy || !!trialStage'><AnalysisSettings :key='settingsVersion' @saved='settingsSaved' /></div>
+          <summary>项目分析配置<span class='home-settings-caption'>引擎、AI 与分析参数</span></summary>
+          <div :inert='!!batch || !!busy || !!trialStage'><AnalysisSettings :key='settingsVersion' @saved='settingsSaved("home")' /></div>
         </details>
       </section>
       <aside v-if='page === "home"' class='library' aria-label='本地棋谱列表'>
         <div class='library-heading'><h2>历史棋谱</h2><span>{{ games.length.toString().padStart(2, '0') }}</span></div>
-        <p class='micro library-caption'>每一盘，都值得再看一遍。</p>
+        <p class='micro library-caption'>继续上次复盘，或导入新的棋谱。</p>
         <p v-if='initializing' class='muted library-placeholder' role='status'>正在读取本地棋谱…</p>
         <p v-else-if='!games.length' class='muted library-placeholder'>还没有棋谱。<br />导入第一盘，开始复盘。</p>
         <ul v-else class='game-list'>
@@ -339,7 +366,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
             </div>
           </section>
         </section>
-        <AnalysisPanel :record='displayedRecord' :temporary='trying' :size='currentGame.boardSize' :move-index='displayedMoveIndex' :to-play='boardPosition!.toPlay' :selected-index='selectedCandidateIndex' :variation='previewVariation' :details-open='analysisDetailsOpen' :stage='trying ? trialStage : currentBusy' :disabled='!!busy || !!batch || !!trialStage || loadingGame || saving || deletingId === currentGame.gameId' :unsaved='!trying && unsaved.has(key)' :saving='saving' :source='trying ? "fresh" : source[key]' :error='trying ? trialAnalysisError : currentError' @analyze='analyzeDisplayed()' @explain='analyzeDisplayed(true)' @save='retrySave' @select-candidate='selectCandidate' @preview-point='previewPoint' @preview-variation='previewLine' @open-details='analysisDetailsOpen = true' @close-details='closeAnalysisDetails'>
+        <AnalysisPanel :record='displayedRecord' :temporary='trying' :size='currentGame.boardSize' :move-index='displayedMoveIndex' :to-play='boardPosition!.toPlay' :selected-index='selectedCandidateIndex' :pending-candidate-index='pendingCandidateIndex' :variation='previewVariation' :details-open='analysisDetailsOpen' :stage='trying ? trialStage : currentBusy' :disabled='!!busy || !!batch || !!trialStage || loadingGame || saving || deletingId === currentGame.gameId' :unsaved='!trying && unsaved.has(key)' :saving='saving' :source='trying ? "fresh" : source[key]' :error='trying ? trialAnalysisError : currentError' @analyze='analyzeDisplayed()' @explain='analyzeDisplayed(true, $event)' @analyze-candidate='analyzeCandidate' @save='retrySave' @select-candidate='selectCandidate' @preview-point='previewPoint' @preview-variation='previewLine' @open-details='analysisDetailsOpen = true' @close-details='closeAnalysisDetails'>
           <template v-if='trying' #controls>
             <div class='section-row'><h3>自由试下</h3><span class='micro' role='status'>试下 {{ trialPositions.length - 1 }} 手</span></div>
             <div class='trial-actions'>
@@ -384,7 +411,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
     <div class='dialog-actions'><button class='button secondary' @click='statusOpen = false'>关闭</button></div>
   </AppDialog>
   <AppDialog v-if='settingsOpen' title='分析设置' @close='settingsOpen = false'>
-    <AnalysisSettings @saved='settingsSaved' />
+    <AnalysisSettings @saved='settingsSaved("dialog")' />
     <div class='dialog-actions'><button class='button secondary' @click='settingsOpen = false'>关闭</button></div>
   </AppDialog>
   <AppDialog v-if='draft' title='确认棋谱信息' :locked='importing' @close='draft = null'>

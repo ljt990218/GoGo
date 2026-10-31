@@ -11,11 +11,13 @@ from .katago import utc_now
 from .models import ExplainRequest, ExplanationResult
 from .sgf import Position
 
-SYSTEM_PROMPT = '''你是一位谨慎的围棋复盘助手，用简体中文解释给定局面的推荐下一手。
+SYSTEM_PROMPT = '''你是一位谨慎的围棋复盘助手，用简体中文解释给定局面中指定的候选选点。
+candidateIndex 是 candidates 的零基索引，0/1/2 对应 A/B/C，本次只围绕该目标选点解释。
+候选列表始终是引擎原始推荐顺序，只有 A 是引擎首选，解释 B 或 C 时不得把它称作引擎首选。
 写约 150～200 字，使用普通文本，以空行分成简短段落，不输出 HTML 或 Markdown 表格。
-第一段用一句话给出当前谁下、推荐坐标和最主要的作用，先说结论。
+第一段用一句话给出当前谁下、目标候选字母和坐标及最主要的作用，先说结论。
 第二段只解释有棋子分布和主要变化支持的棋理，不重复罗列候选表中的数据。
-第三段仅在有对比依据时说明首选与其他候选的主要取舍；否则省略，不凑字数。
+第三段仅在有对比依据时说明目标选点与其他候选的主要取舍；否则省略，不凑字数。
 候选点顺序、胜率、目数由 KataGo 决定，不可修改。关键数值最多引用一次。
 所有胜率和领先目数都是黑方视角：负领先目数代表白方领先。不要把白方行棋误当成白方视角。
 只能引用输入中出现的棋盘坐标。pass 表示停一手，应解释为建议停一手，不能伪造坐标。
@@ -33,6 +35,8 @@ def unavailable(message: str = 'DeepSeek 暂不可用，已保留分析结果，
 
 
 async def explain(client: httpx.AsyncClient, settings: Settings, request: ExplainRequest, position: Position) -> ExplanationResult:
+    if request.candidateIndex >= len(request.analysis.candidates):
+        raise AppError('INVALID_INPUT', '指定候选点不存在', 400)
     if not settings.ai_key:
         raise AppError('AI_NOT_CONFIGURED', '尚未配置 AI，请在页面设置中填写 API 密钥', 503)
     stones = position.stones_for_explanation()
@@ -53,7 +57,8 @@ async def explain(client: httpx.AsyncClient, settings: Settings, request: Explai
         'toPlay': position.to_play,
         'rules': request.rules,
         'komi': request.komi,
-        'candidates': candidates
+        'candidates': candidates,
+        'candidateIndex': request.candidateIndex
     }
     payload = {
         'model': settings.ai_model,
@@ -97,7 +102,10 @@ async def explain(client: httpx.AsyncClient, settings: Settings, request: Explai
                     from_gtp(coord, position.size)
                     if coord not in allowed:
                         raise ValueError('解释引用了未提供的坐标')
-                return ExplanationResult(explanation=text.strip(), aiModel=model, explainedAt=utc_now())
+                return ExplanationResult(
+                    candidateIndex=request.candidateIndex,
+                    explanation=text.strip(), aiModel=model, explainedAt=utc_now()
+                )
             except (ValueError, TypeError, KeyError, IndexError):
                 raise unavailable('AI 解释为空、不完整或引用了无依据的坐标，请重新生成解释') from None
     except (TimeoutError, httpx.TimeoutException):

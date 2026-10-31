@@ -59,9 +59,11 @@ class PositionRequest(Contract):
 
 class ExplainRequest(PositionRequest):
     analysis: AnalysisResult
+    candidateIndex: Annotated[StrictInt, Field(ge=0, le=2)] = 0
 
 
 class ExplanationResult(Contract):
+    candidateIndex: Annotated[StrictInt, Field(ge=0, le=2)]
     explanation: str
     aiModel: str
     explainedAt: str

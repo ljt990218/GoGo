@@ -5,13 +5,22 @@ let database: Promise<IDBDatabase> | null = null
 function openDatabase(): Promise<IDBDatabase> {
   if (database) return database
   database = new Promise((resolve, reject) => {
-    const request = indexedDB.open('gogo-review', 1)
-    request.onupgradeneeded = () => {
+    const request = indexedDB.open('gogo-review', 2)
+    request.onupgradeneeded = event => {
       const db = request.result
       if (!db.objectStoreNames.contains('games')) db.createObjectStore('games', { keyPath: 'gameId' })
       if (!db.objectStoreNames.contains('analyses')) {
         const analyses = db.createObjectStore('analyses', { keyPath: ['gameId', 'moveIndex'] })
         analyses.createIndex('gameId', 'gameId')
+      }
+      if (event.oldVersion < 2) {
+        request.transaction!.objectStore('analyses').openCursor().onsuccess = event => {
+          const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result
+          if (!cursor) return
+          const record = cursor.value as AnalysisRecord
+          if (record.candidateIndex === undefined) cursor.update({ ...record, candidateIndex: 0 })
+          cursor.continue()
+        }
       }
     }
     request.onsuccess = () => {
@@ -100,6 +109,7 @@ export function saveExplanation(record: AnalysisRecord): Promise<void> {
       if (!saved || saved.analysis.analyzedAt !== record.analysis.analyzedAt) return tx.abort()
       store.put({
         ...saved,
+        candidateIndex: record.candidateIndex ?? 0,
         explanation: record.explanation,
         aiModel: record.aiModel,
         explainedAt: record.explainedAt
