@@ -6,6 +6,7 @@ import GoBoard from './components/GoBoard.vue'
 import AnalysisPanel from './components/AnalysisPanel.vue'
 import AppDialog from './components/AppDialog.vue'
 import AnalysisSettings from './components/AnalysisSettings.vue'
+import OnlineGameRecords from './components/OnlineGameRecords.vue'
 import { useReview } from './composables/useReview'
 import { positionAt, trialSgf, validKomi } from './domain/sgf'
 import { analyzePosition, explainPosition } from './services/api'
@@ -244,10 +245,13 @@ async function selectFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (file) {
-    await importFile(file)
-    if (!draft.value && !importError.value && currentGame.value) showAnalysis()
-  }
+  if (file) await importGame(file)
+}
+
+async function importGame(file: File) {
+  if (importing.value || initializing.value || deletingId.value || draft.value) return
+  await importFile(file)
+  if (!draft.value && !importError.value && currentGame.value) showAnalysis()
 }
 
 async function submitImport() {
@@ -313,6 +317,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
           <span class='micro'>支持 9 / 13 / 19 路 · 最大 2 MB</span>
         </div>
       </section>
+      <OnlineGameRecords v-if='page === "home"' :import-disabled='importing || initializing || !!deletingId || loadingGame' :load-game='importGame' />
       <section v-if='page === "home"' class='home-settings'>
         <details>
           <summary>项目分析配置<span class='home-settings-caption'>引擎、AI 与分析参数</span></summary>

@@ -103,3 +103,33 @@ export function installEngine(tier: EngineTier) {
 export function testSettings() {
   return post<SettingsTestResult>('/api/settings/test', {}, 200_000)
 }
+
+export type RecordPlatform = 'fox'
+
+export interface OnlineGameRecord {
+  chessId: string
+  playedAt: string
+  blackName: string
+  whiteName: string
+  boardSize: number
+  moveCount: number
+  result: 'win' | 'loss' | 'unknown'
+}
+
+export interface OnlineRecordsPage {
+  platform: RecordPlatform
+  accountId: string
+  accountName: string | null
+  page: number
+  pageSize: 10
+  total: number
+  items: OnlineGameRecord[]
+}
+
+export function queryGameRecords(platform: RecordPlatform, account: string, page: number) {
+  return post<OnlineRecordsPage>('/api/records/query', { platform, account, page }, 45_000)
+}
+
+export function downloadGameRecord(platform: RecordPlatform, chessId: string) {
+  return post<{ chessId: string, sgfText: string }>('/api/records/sgf', { platform, chessId }, 30_000)
+}

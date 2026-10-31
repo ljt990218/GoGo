@@ -14,6 +14,7 @@ from .config import Settings
 from .deepseek import explain
 from .errors import AppError, invalid
 from .engine_install import EmptyRequest, EngineInstaller, InstallRequest
+from .game_records import GameRecords, RecordsRequest, RecordsResponse, SgfDownloadRequest, SgfDownloadResponse, download_sgf
 from .katago import analyze
 from .models import AnalysisResult, ExplainRequest, ExplanationResult, PositionRequest
 from .sgf import parse_position
@@ -22,6 +23,7 @@ from .settings_test import test_settings
 from .preferences import SavePreferences, apply_preferences, load_preferences, public_preferences, save_preferences
 
 installer = EngineInstaller()
+game_records = GameRecords()
 settings = installer.label_settings(load_preferences(Settings()))
 
 
@@ -110,6 +112,16 @@ async def explain_position(payload: ExplainRequest, request: Request):
 @app.post('/api/settings/read')
 async def read_settings():
     return public_preferences(settings)
+
+
+@app.post('/api/records/query', response_model=RecordsResponse)
+async def query_game_records(payload: RecordsRequest, request: Request):
+    return await game_records.query(request.app.state.client, payload)
+
+
+@app.post('/api/records/sgf', response_model=SgfDownloadResponse)
+async def download_game_record(payload: SgfDownloadRequest, request: Request):
+    return await download_sgf(request.app.state.client, payload)
 
 
 @app.post('/api/settings/save')
