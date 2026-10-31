@@ -11,12 +11,12 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 
 from .config import Settings
-from .deepseek import explain
+from .deepseek import explain, explain_move
 from .errors import AppError, invalid
 from .engine_install import EmptyRequest, EngineInstaller, InstallRequest
 from .game_records import GameRecords, RecordsRequest, RecordsResponse, SgfDownloadRequest, SgfDownloadResponse, download_sgf
 from .katago import analyze
-from .models import AnalysisResult, ExplainRequest, ExplanationResult, PositionRequest
+from .models import AnalysisResult, ExplainMoveRequest, ExplainRequest, ExplanationResult, MoveExplanationResult, PositionRequest
 from .sgf import parse_position
 from .settings_test import test_settings
 
@@ -107,6 +107,29 @@ async def explain_position(payload: ExplainRequest, request: Request):
         except ValueError:
             raise invalid('分析结果的手数、行棋方或候选变化与棋谱局面不一致') from None
         return await explain(request.app.state.client, settings, payload, position)
+
+
+@app.post('/api/explain-move', response_model=MoveExplanationResult)
+async def explain_played_move(payload: ExplainMoveRequest, request: Request):
+    lock = request.app.state.operation_lock
+    if lock.locked():
+        raise AppError('AI_UNAVAILABLE', '安装、分析或测试正在进行，请等待完成后重试', 502)
+    async with lock:
+        before_request = PositionRequest(
+            sgfText=payload.sgfText, moveIndex=payload.moveIndex - 1,
+            rules=payload.rules, komi=payload.komi
+        )
+        before = await run_in_threadpool(parse_position, before_request)
+        after = await run_in_threadpool(parse_position, payload)
+        try:
+            before.validate_analysis(payload.beforeAnalysis, payload.moveIndex - 1)
+            after.validate_analysis(payload.afterAnalysis, payload.moveIndex)
+            if (payload.beforeAnalysis.engineLabel != payload.afterAnalysis.engineLabel or
+                    payload.beforeAnalysis.visitBudget != payload.afterAnalysis.visitBudget):
+                raise ValueError('两侧分析配置不一致')
+        except ValueError:
+            raise invalid('落子前后分析的手数、行棋方、配置或候选变化与棋谱不一致') from None
+        return await explain_move(request.app.state.client, settings, payload, before, after)
 
 
 @app.post('/api/settings/read')

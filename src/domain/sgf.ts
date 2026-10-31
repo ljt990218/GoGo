@@ -14,6 +14,8 @@ export interface Move {
 }
 
 export interface ParsedGame {
+  blackName: string | null
+  whiteName: string | null
   boardSize: number
   rules: Rules | null
   komi: number | null
@@ -61,7 +63,8 @@ function validateStructure(tokens: Token[]) {
     } else if (token.type === 'prop_ident') {
       finishProperty()
       if (!frame?.node || frame.children || !/^[A-Z]+$/.test(token.value)) invalid()
-      if (frame!.properties.has(token.value)) throw new Error(`SGF 属性 ${token.value} 在同一节点重复`)
+      // AP 仅记录生成软件，不参与局面或分析，允许重复以兼容平台棋谱。
+      if (token.value !== 'AP' && frame!.properties.has(token.value)) throw new Error(`SGF 属性 ${token.value} 在同一节点重复`)
       frame!.properties.add(token.value)
       property = token.value
     } else if (token.type === 'c_value_type') {
@@ -121,7 +124,9 @@ export function parseGame(text: string): ParsedGame {
   const originalRules = single(root, 'RU')
   const rules = originalRules === null ? null : ruleMap.get(originalRules.trim().toLowerCase()) ?? null
   const komiText = single(root, 'KM')
-  const komi = komiText === null ? null : Number(komiText)
+  let komi = komiText === null ? null : Number(komiText)
+  // 野狐的已确认特例：仅 AP[foxwq] 的 KM[375] 表示 7.5 目，保留原文。
+  if (root.data.AP?.includes('foxwq') && komi === 375) komi = 7.5
   if (komiText !== null && (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(komiText) || !validKomi(komi!))) {
     throw new Error('贴目 KM 必须在 -50～50 之间，且为 0.5 的倍数')
   }
@@ -188,7 +193,9 @@ export function parseGame(text: string): ParsedGame {
     if (node.children.length > 1) hasVariations = true
     node = node.children[0]
   }
-  return { boardSize, rules, komi, originalRules, initialPlayer, handicap, moves, hasVariations, checkpoints }
+  const blackName = single(root, 'PB')?.trim() || null
+  const whiteName = single(root, 'PW')?.trim() || null
+  return { blackName, whiteName, boardSize, rules, komi, originalRules, initialPlayer, handicap, moves, hasVariations, checkpoints }
 }
 
 export function positionAt(game: ParsedGame, moveIndex: number) {

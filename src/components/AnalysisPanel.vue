@@ -1,11 +1,16 @@
 <script setup lang='ts'>
 import { computed } from 'vue'
 import AppDialog from './AppDialog.vue'
+import MoveReviewContent from './MoveReviewContent.vue'
+import type { Move } from '../domain/sgf'
 import { columns, coordinate } from '../domain/coordinates'
 import { formatScoreLead, formatWinRate } from '../domain/evaluation'
-import type { AnalysisRecord, Candidate, Player, Point } from '../domain/types'
+import type { AnalysisRecord, Candidate, MoveReviewRecord, Player, Point } from '../domain/types'
 
 const props = defineProps<{
+  mode: 'position' | 'move'
+  review: MoveReviewRecord | null
+  playedMove: Move | null
   temporary?: boolean
   record: AnalysisRecord | null
   size: number
@@ -24,6 +29,10 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   analyze: []
+  review: []
+  refresh: []
+  refreshReview: []
+  explainReview: []
   explain: [candidateIndex: number]
   analyzeCandidate: [index: number]
   save: []
@@ -89,10 +98,15 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
 <template>
   <aside class='analysis-panel' aria-label='分析结果卡'>
     <slot name='controls' />
-    <button class='button primary analyze-button' :disabled='disabled' @click='emit("analyze")'>{{ stage === 'analyzing' ? '分析中…' : record ? '重新分析' : '分析当前局面' }}</button>
+    <div class='analysis-actions' aria-label='选择分析方式'>
+      <button type='button' :class='["button", "analyze-button", mode === "position" ? "primary" : "secondary"]' :aria-pressed='mode === "position"' :disabled='disabled' aria-keyshortcuts='a' title='分析局面（快捷键 A）' @click='emit("analyze")'>分析局面（A）</button>
+      <button type='button' :class='["button", "analyze-button", mode === "move" ? "primary" : "secondary"]' :aria-pressed='mode === "move"' :disabled='disabled || moveIndex < 1' aria-keyshortcuts='s' :title='moveIndex < 1 ? "初始局面尚无可点评的着手" : "点评当前第 " + moveIndex + " 手（快捷键 S）"' @click='emit("review")'>点评此手（S）</button>
+    </div>
+    <MoveReviewContent v-if='mode === "move"' :review='review' :played-move='playedMove' :move-index='moveIndex' :size='size' :temporary='temporary' :stage='stage' :disabled='disabled' :unsaved='unsaved' :saving='saving' :source='source' :error='error' :details-open='detailsOpen' @refresh='emit("refreshReview")' @explain='emit("explainReview")' @save='emit("save")' @open-details='emit("openDetails")' @close-details='emit("closeDetails")' @preview-point='emit("previewPoint", $event)' />
+    <template v-else>
     <header class='analysis-card-heading'>
       <div>
-        <span class='section-label'>{{ record ? '推荐下一手' : '局面分析' }}</span>
+        <div class='section-row'><span class='section-label'>{{ record ? '推荐下一手' : '局面分析' }}</span><button v-if='record' type='button' class='text-button' :disabled='disabled' @click='emit("refresh")'>重新分析</button></div>
         <h2 class='recommendation-point'><span v-if='best' class='candidate-letter primary-letter'>A</span>{{ best ? coordinate(best.point, size) : '等待分析' }}</h2>
       </div>
       <div class='analysis-context'>
@@ -153,9 +167,10 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
         <button v-if='record && !error' type='button' class='text-button' @click='emit("openDetails")'>分析详情</button>
       </div>
     </footer>
+    </template>
   </aside>
 
-  <AppDialog v-if='detailsOpen' title='分析详情' placement='right' @close='emit("closeDetails")'>
+  <AppDialog v-if='detailsOpen && mode === "position"' title='分析详情' placement='right' @close='emit("closeDetails")'>
     <div class='drawer-heading-row'><span class='micro'>第 {{ moveIndex }} 手后 · {{ toPlay === 'black' ? '黑方' : '白方' }}行棋</span><button type='button' class='button secondary' @click='emit("closeDetails")'>关闭</button></div>
     <p v-if='error' class='notice error' role='alert'>{{ error }}</p>
     <template v-if='record'>

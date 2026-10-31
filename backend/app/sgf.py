@@ -114,7 +114,8 @@ def _parse_position(request: PositionRequest) -> Position:
         if kind == 'D':
             properties = set()
         elif kind == 'I':
-            if value in properties:
+            # 与前端一致：仅容忍不参与局面或分析的 AP 生成软件信息重复。
+            if value != b'AP' and value in properties:
                 raise invalid('SGF 同一节点包含重复属性')
             properties.add(value)
     coarse = sgf_grammar.parse_sgf_game(raw)
@@ -139,6 +140,9 @@ def _parse_position(request: PositionRequest) -> Position:
         if not re.fullmatch(r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)', komi_text):
             raise invalid('KM 必须为有效贴目')
         komi = float(komi_text)
+        # 与前端相同，仅转换有明确野狐来源标识的 KM[375]。
+        if root.has_property('AP') and b'foxwq' in [sgf_grammar.text_value(value) for value in root.get_raw_list('AP')] and komi == 375:
+            komi = 7.5
         if not -50 <= komi <= 50 or not (komi * 2).is_integer() or komi != request.komi:
             raise invalid('请求贴目与棋谱不一致，或不在支持范围内')
     handicap_text = single(root, 'HA')

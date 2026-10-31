@@ -2,16 +2,19 @@
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { downloadGameRecord, queryGameRecords } from '../services/api'
 import type { OnlineRecordsPage, RecordPlatform } from '../services/api'
+import type { PlayerNames } from '../domain/types'
 
 const props = defineProps<{
   importDisabled: boolean
-  loadGame: (file: File) => Promise<void>
+  loadGame: (file: File, names?: PlayerNames) => Promise<void>
 }>()
 
 const platform = ref<RecordPlatform>('fox')
 const account = ref('')
+const records = shallowRef<OnlineRecordsPage | null>(null)
 const platformStorageKey = 'gogo-records-platform'
 const accountStorageKey = 'gogo-records-account'
+const queryStorageKey = 'gogo-records-last-query'
 
 try {
   const savedPlatform = localStorage.getItem(platformStorageKey)
@@ -23,7 +26,32 @@ try {
   // 本地存储不可用时保留默认表单值
 }
 
-const records = shallowRef<OnlineRecordsPage | null>(null)
+try {
+  const saved = JSON.parse(localStorage.getItem(queryStorageKey) ?? 'null') as { account?: unknown, records?: OnlineRecordsPage } | null
+  const result = saved?.records
+  if (
+    typeof saved?.account === 'string' && saved.account.trim().length > 0 && saved.account.length <= 64 &&
+    result?.platform === 'fox' && typeof result.accountId === 'string' && /^\d+$/.test(result.accountId) &&
+    (result.accountName === null || typeof result.accountName === 'string') &&
+    Number.isSafeInteger(result.page) && result.page >= 1 && result.pageSize === 10 &&
+    Number.isSafeInteger(result.total) && result.total >= 0 &&
+    result.page <= Math.max(1, Math.ceil(result.total / result.pageSize)) &&
+    Array.isArray(result.items) && result.items.length === Math.min(10, Math.max(0, result.total - (result.page - 1) * 10)) &&
+    result.items.every(item => item &&
+      typeof item.chessId === 'string' && /^[0-9]{1,32}$/.test(item.chessId) &&
+      typeof item.playedAt === 'string' && typeof item.blackName === 'string' && typeof item.whiteName === 'string' &&
+      Number.isSafeInteger(item.boardSize) && item.boardSize > 0 &&
+      Number.isSafeInteger(item.moveCount) && item.moveCount >= 0 &&
+      ['win', 'loss', 'unknown'].includes(item.result))
+  ) {
+    platform.value = result.platform
+    account.value = saved.account
+    records.value = result
+  }
+} catch {
+  // 缓存损坏或本地存储不可用时，仍可手动查询
+}
+
 const loading = ref(false)
 const error = ref('')
 const downloadingId = ref('')
@@ -66,7 +94,13 @@ async function query(page = 1) {
   downloadingId.value = ''
   try {
     const response = await queryGameRecords(platform.value, keyword, page)
-    if (requestVersion === version) records.value = response
+    if (requestVersion !== version) return
+    records.value = response
+    try {
+      localStorage.setItem(queryStorageKey, JSON.stringify({ account: keyword, records: response }))
+    } catch {
+      // 缓存写入失败不影响本次查询结果
+    }
   } catch (cause) {
     if (requestVersion === version) error.value = cause instanceof Error ? cause.message : '查询失败，请稍后重试'
   } finally {
@@ -107,7 +141,8 @@ async function openRecord(chessId: string) {
     const response = await downloadGameRecord(records.value.platform, chessId)
     if (requestVersion !== version) return
     const file = new File([response.sgfText], `${chessId}.sgf`, { type: 'application/x-go-sgf;charset=utf-8' })
-    await props.loadGame(file)
+    const item = records.value?.items.find(record => record.chessId === chessId)
+    await props.loadGame(file, item ? { blackName: item.blackName, whiteName: item.whiteName } : {})
   } catch (cause) {
     if (requestVersion === version) recordError.value = cause instanceof Error ? cause.message : '打开棋谱失败，请稍后重试'
   } finally {
@@ -121,7 +156,7 @@ async function openRecord(chessId: string) {
     <div class='records-heading'>
       <div>
         <h2 id='online-records-title'>近期对局</h2>
-        <p class='micro'>按平台和账号查询公开棋谱，每页 10 条。</p>
+        <p class='micro'>按平台和账号查询公开棋谱，每页 10 条。自动回显上次结果，点击“查询对局”刷新。</p>
       </div>
       <span class='section-label'>云端棋谱</span>
     </div>

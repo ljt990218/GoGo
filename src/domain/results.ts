@@ -1,4 +1,12 @@
-import type { AnalysisResult, Player, Point } from './types'
+import type { AnalysisResult, MoveExplanationResult, Player, Point } from './types'
+
+export function validateExplanation(value: MoveExplanationResult) {
+  if (!value || typeof value.explanation !== 'string' || !value.explanation.trim() ||
+      typeof value.aiModel !== 'string' || !value.aiModel.trim() ||
+      typeof value.explainedAt !== 'string' || !Number.isFinite(Date.parse(value.explainedAt))) {
+    throw new Error('AI 返回了空解释或无效结果，请重新生成解释')
+  }
+}
 
 export function validateAnalysis(value: AnalysisResult, size: number, moveIndex: number, toPlay: Player) {
   const fail = () => { throw new Error('分析结果无法对应当前局面，请重试') }

@@ -94,7 +94,11 @@ p { line-height: 1.8; }
 .review-status-button { display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 210px; padding: 6px 10px; border: 1px solid #ddcfaf; border-radius: 5px; background: #f5f0e1; color: #85642d; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-status-button .status-dot { background: #a47c39; }
 .workspace { display: grid; grid-template-columns: minmax(0, 3fr) minmax(480px, 2fr); gap: 24px; min-height: calc(100dvh - 56px); padding: 16px 24px; }
-.board-panel { --board-width: min(100%, calc(100dvh - 168px)); min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.board-panel { --board-width: min(100%, calc(100dvh - 208px)); min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.game-players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; width: var(--board-width); margin-bottom: 10px; flex-shrink: 0; }
+.game-player { display: flex; align-items: flex-start; gap: 7px; min-width: 0; color: var(--green); font-size: 12px; line-height: 20px; }
+.game-player .stone-dot { margin-top: 3px; }
+.game-player > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .board-stage { flex: 1; min-height: 0; min-width: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
 .board-surface { position: relative; width: var(--board-width); background: #dbc39b; border-radius: 5px; padding: 8px; border: 1px solid #c6ae85; box-shadow: 0 8px 22px #55412210, 0 2px 3px #55412214; }
 .go-board { display: block; width: 100%; height: auto; }
@@ -206,6 +210,26 @@ p { line-height: 1.8; }
 .save-status { display: flex; align-items: center; gap: 6px; color: #4f7047; font-size: 11px; }
 .analysis-footer-status .save-warning { color: #95611d; }
 .analyze-button { margin: 0; width: 100%; min-height: 38px; padding: 8px 14px; flex-shrink: 0; white-space: nowrap; }
+.analysis-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; flex-shrink: 0; }
+.move-review-heading { flex-shrink: 0; }
+.move-review-heading h2 { margin-top: 5px; font-size: 19px; line-height: 1.6; }
+.move-review-heading .text-button { color: var(--green); }
+.move-review-metrics { flex-shrink: 0; padding: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.review-comparison { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.review-comparison caption { text-align: left; color: var(--muted); font-size: 11px; padding-bottom: 4px; }
+.review-comparison th, .review-comparison td { padding: 4px 0; text-align: right; font-weight: 400; }
+.review-comparison th:first-child { text-align: left; }
+.review-comparison thead { color: var(--muted); font-size: 11px; }
+.move-review-metrics > .micro { margin-top: 4px; font-size: 11px; }
+.move-alternatives { flex-shrink: 0; }
+.move-alternatives h3 { font-size: 13px; }
+.move-alternative-points { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.move-alternative-points .button { min-height: 28px; padding: 3px 9px; font-size: 12px; }
+.move-alternative-points .button:nth-child(1) { background: #315d49; border-color: #315d49; color: #fff; }
+.move-alternative-points .button:nth-child(2) { background: #c9dccf; border-color: #a6bfae; }
+.move-alternative-points .button:nth-child(3) { background: #edf3ee; border-color: #c5cebe; }
+.move-alternative-points .button:hover:not(:disabled) { filter: brightness(.96); }
+.review-candidate-detail { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; overflow-wrap: anywhere; }
 .variation-line { display: flex; flex-direction: column; gap: 5px; width: 100%; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; line-height: 1.8; text-align: left; overflow-wrap: anywhere; }
 .variation-line b { color: var(--green); }
 .variation-line:hover:not(:disabled) { background: #eaf0e4; border-color: #a9bb9e; color: var(--green); }

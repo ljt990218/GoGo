@@ -9,11 +9,13 @@ import AnalysisSettings from './components/AnalysisSettings.vue'
 import OnlineGameRecords from './components/OnlineGameRecords.vue'
 import { useReview } from './composables/useReview'
 import { positionAt, trialSgf, validKomi } from './domain/sgf'
-import { analyzePosition, explainPosition } from './services/api'
-import { validateAnalysis } from './domain/results'
-import type { AnalysisRecord, Candidate, GameRecord, Point, PositionRequest, Rules } from './domain/types'
+import { analyzePosition, explainMove, explainPosition } from './services/api'
+import { analyzeMove } from './services/move-review'
+import { validateAnalysis, validateExplanation } from './domain/results'
+import type { AnalysisRecord, Candidate, GameRecord, MoveReviewRecord, PlayerNames, Point, PositionRequest, Rules } from './domain/types'
 
 const {
+  currentMoveReview, currentReviewError, reviewSource, runMoveReview,
   games, counts, currentGame, parsed, moveIndex, position, currentRecord, currentBusy, currentError,
   batch, batchMessage, batchStopMove, batchSettingsLoading, batchSettingsError, loadBatchSettings, runBatch, stopBatch, busy, initializing, loadingGame, importing, importError, draft, storageError, deleteTarget,
   deletingId, saving, unsaved, dirtyGames, source, key, initialize, openGame, navigate,
@@ -24,10 +26,15 @@ const trialPositions = shallowRef<NonNullable<typeof position.value>[]>([])
 const trialError = ref('')
 const trying = computed(() => trialPositions.value.length > 0)
 const boardPosition = computed(() => trialPositions.value.at(-1) ?? position.value)
+const analysisMode = ref<'position' | 'move'>('position')
+const trialMoveReview = shallowRef<MoveReviewRecord | null>(null)
+const trialReviewError = ref('')
+const displayedMoveReview = computed(() => trying.value ? trialMoveReview.value : currentMoveReview.value)
 const trialRecord = shallowRef<AnalysisRecord | null>(null)
 const trialStage = ref<'analyzing' | 'explaining' | null>(null)
+const trialRequest = shallowRef<{ version: number, mode: 'position' | 'move' } | null>(null)
 const trialAnalysisError = ref('')
-let trialVersion = 0
+const trialVersion = ref(0)
 const displayedRecord = computed(() => trying.value ? trialRecord.value : currentRecord.value)
 const candidateRequest = shallowRef<{ analysis: AnalysisRecord['analysis'], candidateIndex: number } | null>(null)
 const pendingCandidateIndex = computed(() => {
@@ -35,15 +42,24 @@ const pendingCandidateIndex = computed(() => {
   return request && request.analysis === displayedRecord.value?.analysis ? request.candidateIndex : null
 })
 const displayedMoveIndex = computed(() => moveIndex.value + Math.max(0, trialPositions.value.length - 1))
+const displayedStage = computed(() => {
+  if (trying.value) {
+    return trialRequest.value?.version === trialVersion.value && trialRequest.value.mode === analysisMode.value ? trialStage.value : null
+  }
+  return (busy.value?.kind === 'move') === (analysisMode.value === 'move') ? currentBusy.value : null
+})
 watch(trialPositions, () => {
-  trialVersion++
+  trialVersion.value++
   trialRecord.value = null
+  trialMoveReview.value = null
+  trialReviewError.value = ''
   trialAnalysisError.value = ''
+  if (displayedMoveIndex.value < 1) analysisMode.value = 'position'
   analysisDetailsOpen.value = false
   selectedCandidateIndex.value = 0
   clearPreview()
 }, { flush: 'sync' })
-onUnmounted(() => { trialVersion++ })
+onUnmounted(() => { trialVersion.value++ })
 async function analyzeTrial(explanationOnly = false, candidateIndex = 0) {
   const game = currentGame.value
   const gameParsed = parsed.value
@@ -51,7 +67,8 @@ async function analyzeTrial(explanationOnly = false, candidateIndex = 0) {
   if (!trying.value || !game || !gameParsed || !snapshot || trialStage.value || busy.value || batch.value || loadingGame.value || saving.value) return
   if (explanationOnly && !trialRecord.value) return
   if (explanationOnly && !trialRecord.value!.analysis.candidates[candidateIndex]) return
-  const version = trialVersion
+  const version = trialVersion.value
+  trialRequest.value = { version, mode: 'position' }
   const moves = trialPositions.value.slice(1).map(item => item.lastMove!)
   const request: PositionRequest = {
     sgfText: trialSgf(gameParsed, moveIndex.value, moves, game.rules, game.komi),
@@ -63,17 +80,17 @@ async function analyzeTrial(explanationOnly = false, candidateIndex = 0) {
     let record = trialRecord.value
     if (!explanationOnly) {
       const analysis = await analyzePosition(request)
-      if (version !== trialVersion) return
+      if (version !== trialVersion.value) return
       validateAnalysis(analysis, game.boardSize, request.moveIndex, snapshot.toPlay)
       record = { gameId: game.gameId, moveIndex: request.moveIndex, analysis, candidateIndex: 0, explanation: null, aiModel: null, explainedAt: null }
       trialRecord.value = record
       selectedCandidateIndex.value = 0
       clearPreview()
     }
-    if (!record || version !== trialVersion) return
+    if (!record || version !== trialVersion.value) return
     trialStage.value = 'explaining'
     const explanation = await explainPosition(request, record.analysis, candidateIndex)
-    if (version !== trialVersion) return
+    if (version !== trialVersion.value) return
     if (explanation.candidateIndex !== candidateIndex ||
         typeof explanation.explanation !== 'string' || !explanation.explanation.trim() ||
         typeof explanation.aiModel !== 'string' || !explanation.aiModel.trim() ||
@@ -82,7 +99,7 @@ async function analyzeTrial(explanationOnly = false, candidateIndex = 0) {
     }
     trialRecord.value = { ...record, ...explanation }
   } catch (error) {
-    if (version === trialVersion) {
+    if (version === trialVersion.value) {
       trialAnalysisError.value = `${trialStage.value === 'explaining' ? '解释生成失败，已保留引擎结果。' : ''}${error instanceof Error ? error.message : '分析失败，请重试'}`
     }
   } finally {
@@ -102,6 +119,58 @@ async function analyzeDisplayed(explanationOnly = false, candidateIndex = 0) {
   } finally {
     candidateRequest.value = null
   }
+}
+async function reviewDisplayed(explanationOnly = false) {
+  if (candidateRequest.value || trialStage.value || busy.value || batch.value || loadingGame.value || saving.value || deletingId.value === currentGame.value?.gameId) return
+  if (!trying.value) {
+    await runMoveReview(explanationOnly)
+    return
+  }
+  const game = currentGame.value
+  const gameParsed = parsed.value
+  const snapshot = boardPosition.value
+  if (!game || !gameParsed || !snapshot?.lastMove || displayedMoveIndex.value < 1) return
+  if (explanationOnly && !trialMoveReview.value) return
+  const version = trialVersion.value
+  trialRequest.value = { version, mode: 'move' }
+  const moves = trialPositions.value.slice(1).map(item => item.lastMove!)
+  const request: PositionRequest = {
+    sgfText: trialSgf(gameParsed, moveIndex.value, moves, game.rules, game.komi),
+    moveIndex: displayedMoveIndex.value, rules: game.rules, komi: game.komi
+  }
+  trialStage.value = explanationOnly ? 'explaining' : 'analyzing'
+  trialReviewError.value = ''
+  try {
+    let record = trialMoveReview.value
+    if (!explanationOnly) {
+      const result = await analyzeMove(request, game.gameId, game.boardSize, snapshot.lastMove.player, () => version === trialVersion.value)
+      if (!result || version !== trialVersion.value) return
+      record = result
+      trialMoveReview.value = record
+    }
+    if (!record || version !== trialVersion.value) return
+    trialStage.value = 'explaining'
+    const explanation = await explainMove(request, record.beforeAnalysis, record.afterAnalysis)
+    if (version !== trialVersion.value) return
+    validateExplanation(explanation)
+    trialMoveReview.value = { ...record, ...explanation }
+  } catch (error) {
+    if (version === trialVersion.value) {
+      const prefix = trialStage.value === 'explaining' ? '解释生成失败，已保留引擎结果。' : trialMoveReview.value ? '本次刷新失败，保留原有点评。' : ''
+      trialReviewError.value = `${prefix}${error instanceof Error ? error.message : '点评失败，请重试'}`
+    }
+  } finally {
+    trialStage.value = null
+  }
+}
+async function chooseAnalysis(mode: 'position' | 'move') {
+  if (candidateRequest.value || trialStage.value || busy.value || batch.value || loadingGame.value || saving.value || deletingId.value === currentGame.value?.gameId) return
+  if (mode === 'move' && displayedMoveIndex.value < 1) return
+  analysisMode.value = mode
+  clearPreview()
+  analysisDetailsOpen.value = false
+  if (mode === 'position' && !displayedRecord.value) await analyzeDisplayed()
+  if (mode === 'move' && !displayedMoveReview.value) await reviewDisplayed()
 }
 function returnToGame() {
   trialPositions.value = []
@@ -205,6 +274,19 @@ function settingsSaved(source: 'home' | 'dialog') {
 function exitPreview(event: KeyboardEvent) {
   if (event.key === 'Escape' && !settingsOpen.value && !analysisDetailsOpen.value && !batchOpen.value && !statusOpen.value && !draft.value && !deleteTarget.value) clearPreview()
 }
+function onAnalysisShortcut(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return
+  if (page.value !== 'analysis' || !currentGame.value || !parsed.value || !position.value) return
+  if (settingsOpen.value || analysisDetailsOpen.value || batchOpen.value || statusOpen.value || draft.value || deleteTarget.value) return
+  const target = event.target
+  if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="dialog"]')) return
+  if (candidateRequest.value || trialStage.value || busy.value || batch.value || loadingGame.value || saving.value || deletingId.value === currentGame.value.gameId) return
+  const key = event.key.toLowerCase()
+  if (key !== 'a' && key !== 's') return
+  if (key === 's' && displayedMoveIndex.value < 1) return
+  event.preventDefault()
+  void chooseAnalysis(key === 'a' ? 'position' : 'move')
+}
 const page = ref(window.location.hash === '#analysis' ? 'analysis' : 'home')
 watch([key, () => currentRecord.value?.analysis, page], () => {
   clearPreview()
@@ -212,6 +294,7 @@ watch([key, () => currentRecord.value?.analysis, page], () => {
 }, { flush: 'sync' })
 watch([key, page], () => {
   returnToGame()
+  analysisMode.value = 'position'
   analysisDetailsOpen.value = false
   batchOpen.value = false
   statusOpen.value = false
@@ -233,11 +316,13 @@ onMounted(() => window.addEventListener('hashchange', syncPage))
 onUnmounted(() => window.removeEventListener('hashchange', syncPage))
 onMounted(() => window.addEventListener('keydown', exitPreview))
 onUnmounted(() => window.removeEventListener('keydown', exitPreview))
+onMounted(() => window.addEventListener('keydown', onAnalysisShortcut))
+onUnmounted(() => window.removeEventListener('keydown', onAnalysisShortcut))
 const fileInput = ref<HTMLInputElement | null>(null)
-const selectedRules = ref<Rules | ''>('')
+const selectedRules = ref<Rules | ''>('chinese')
 const selectedKomi = ref<number | ''>('')
 watch(draft, value => {
-  selectedRules.value = value?.parsed.rules ?? ''
+  selectedRules.value = value?.parsed.rules ?? 'chinese'
   selectedKomi.value = value?.parsed.komi ?? ''
 })
 
@@ -248,9 +333,9 @@ async function selectFile(event: Event) {
   if (file) await importGame(file)
 }
 
-async function importGame(file: File) {
+async function importGame(file: File, names: PlayerNames = {}) {
   if (importing.value || initializing.value || deletingId.value || draft.value) return
-  await importFile(file)
+  await importFile(file, names)
   if (!draft.value && !importError.value && currentGame.value) showAnalysis()
 }
 
@@ -300,7 +385,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
         <button v-else class='text-button' @click='batchMessage = ""'>关闭</button>
       </div>
       <div v-if='unsaved.size' class='global-notice notice warning' role='status'>
-        <span>有 {{ unsaved.size }} 个局面结果尚未保存，请在关闭页面前重试保存。</span>
+        <span>有 {{ unsaved.size }} 个分析或点评结果尚未保存，请在关闭页面前重试保存。</span>
         <button class='text-button' :disabled='saving || !!busy' @click='retrySave'>{{ saving ? '保存中…' : '重试保存' }}</button>
       </div>
     </div>
@@ -347,8 +432,12 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
 
       <template v-if='page === "analysis" && currentGame && parsed && position'>
         <section class='board-panel' aria-label='棋谱浏览'>
+          <div class='game-players' aria-label='对局棋手'>
+            <span class='game-player'><span class='stone-dot black' aria-hidden='true'></span><span>黑棋 · {{ currentGame.blackName?.trim() || parsed.blackName || '未提供昵称' }}</span></span>
+            <span class='game-player'><span class='stone-dot white' aria-hidden='true'></span><span>白棋 · {{ currentGame.whiteName?.trim() || parsed.whiteName || '未提供昵称' }}</span></span>
+          </div>
           <div class='board-stage'>
-            <GoBoard :size='currentGame.boardSize' :board='boardPosition!.board' :last-point='boardPosition!.lastMove?.point ?? null' :candidates='displayedRecord?.analysis.candidates ?? []' :to-play='boardPosition!.toPlay' @play='playTrial' :selected-index='selectedCandidateIndex' :highlighted-point='highlightedPoint' :variation='previewVariation' @select-candidate='selectCandidate' @exit-preview='clearPreview' />
+            <GoBoard :size='currentGame.boardSize' :board='boardPosition!.board' :last-point='boardPosition!.lastMove?.point ?? null' :candidates='analysisMode === "position" ? displayedRecord?.analysis.candidates ?? [] : []' :to-play='boardPosition!.toPlay' @play='playTrial' :selected-index='selectedCandidateIndex' :highlighted-point='highlightedPoint' :variation='previewVariation' @select-candidate='selectCandidate' @exit-preview='clearPreview' />
           </div>
           <section :inert='trying ? true : undefined' class='position-controls' aria-label='棋盘下方的手数导航'>
             <div class='playback-actions'>
@@ -371,7 +460,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
             </div>
           </section>
         </section>
-        <AnalysisPanel :record='displayedRecord' :temporary='trying' :size='currentGame.boardSize' :move-index='displayedMoveIndex' :to-play='boardPosition!.toPlay' :selected-index='selectedCandidateIndex' :pending-candidate-index='pendingCandidateIndex' :variation='previewVariation' :details-open='analysisDetailsOpen' :stage='trying ? trialStage : currentBusy' :disabled='!!busy || !!batch || !!trialStage || loadingGame || saving || deletingId === currentGame.gameId' :unsaved='!trying && unsaved.has(key)' :saving='saving' :source='trying ? "fresh" : source[key]' :error='trying ? trialAnalysisError : currentError' @analyze='analyzeDisplayed()' @explain='analyzeDisplayed(true, $event)' @analyze-candidate='analyzeCandidate' @save='retrySave' @select-candidate='selectCandidate' @preview-point='previewPoint' @preview-variation='previewLine' @open-details='analysisDetailsOpen = true' @close-details='closeAnalysisDetails'>
+        <AnalysisPanel :mode='analysisMode' :review='displayedMoveReview' :played-move='boardPosition!.lastMove' :record='displayedRecord' :temporary='trying' :size='currentGame.boardSize' :move-index='displayedMoveIndex' :to-play='boardPosition!.toPlay' :selected-index='selectedCandidateIndex' :pending-candidate-index='pendingCandidateIndex' :variation='previewVariation' :details-open='analysisDetailsOpen' :stage='displayedStage' :disabled='!!busy || !!batch || !!trialStage || loadingGame || saving || deletingId === currentGame.gameId' :unsaved='!trying && unsaved.has(analysisMode === "move" ? `move:${key}` : key)' :saving='saving' :source='trying ? "fresh" : analysisMode === "move" ? reviewSource[key] : source[key]' :error='trying ? analysisMode === "move" ? trialReviewError : trialAnalysisError : analysisMode === "move" ? currentReviewError : currentError' @analyze='chooseAnalysis("position")' @review='chooseAnalysis("move")' @refresh='analyzeDisplayed()' @refresh-review='reviewDisplayed()' @explain-review='reviewDisplayed(true)' @explain='analyzeDisplayed(true, $event)' @analyze-candidate='analyzeCandidate' @save='retrySave' @select-candidate='selectCandidate' @preview-point='previewPoint' @preview-variation='previewLine' @open-details='analysisDetailsOpen = true' @close-details='closeAnalysisDetails'>
           <template v-if='trying' #controls>
             <div class='section-row'><h3>自由试下</h3><span class='micro' role='status'>试下 {{ trialPositions.length - 1 }} 手</span></div>
             <div class='trial-actions'>
@@ -409,7 +498,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
   <AppDialog v-if='statusOpen' title='运行状态' @close='statusOpen = false'>
     <div v-if='storageError' class='notice warning' role='alert'>{{ storageError }} <button class='text-button' :disabled='saving || !!busy' @click='dirtyGames.size || unsaved.size ? retrySave() : initialize()'>重试</button></div>
     <div v-if='importError' class='notice error' role='alert'>{{ importError }} <button class='text-button' @click='importError = ""'>清除提示</button></div>
-    <div v-if='unsaved.size' class='notice warning' role='status'>有 {{ unsaved.size }} 个局面结果尚未保存。<button class='text-button' :disabled='saving || !!busy || !!batch' @click='retrySave'>{{ saving ? '保存中…' : '重试保存' }}</button></div>
+    <div v-if='unsaved.size' class='notice warning' role='status'>有 {{ unsaved.size }} 个分析或点评结果尚未保存。<button class='text-button' :disabled='saving || !!busy || !!batch' @click='retrySave'>{{ saving ? '保存中…' : '重试保存' }}</button></div>
     <div v-if='batchMessage' class='notice warning' role='status'>{{ batchMessage }} <button class='text-button' @click='batchMessage = ""'>清除提示</button></div>
     <p v-if='busy && !currentBusy && !batch' class='micro' role='status'>正在处理「{{ games.find(game => game.gameId === busy?.gameId)?.fileName }}」第 {{ busy.moveIndex }} 手，结果将保存至对应局面。</p>
     <p v-if='!statusSummary' class='micro'>当前没有需要处理的运行提示。</p>
@@ -420,7 +509,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
     <div class='dialog-actions'><button class='button secondary' @click='settingsOpen = false'>关闭</button></div>
   </AppDialog>
   <AppDialog v-if='draft' title='确认棋谱信息' :locked='importing' @close='draft = null'>
-    <p class='muted'>棋谱缺少规则或贴目，或规则无法识别。请明确确认后导入。</p>
+    <p class='muted'>棋谱缺少规则或贴目，或规则无法识别。未识别的规则默认选中中国规则，请确认后导入。</p>
     <p class='micro'>文件：{{ draft.fileName }}<br />原始规则：{{ draft.parsed.originalRules ?? '未填写' }}</p>
     <form @submit.prevent='submitImport'>
       <label class='form-field'>规则<select v-model='selectedRules' required :disabled='draft.parsed.rules !== null'><option disabled value=''>请选择规则</option><option value='chinese'>中国规则</option><option value='japanese'>日本规则</option></select></label>

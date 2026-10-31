@@ -34,6 +34,8 @@ export interface GameRecord {
   lastMoveIndex: number
   createdAt: string
   lastOpenedAt: string
+  blackName?: string
+  whiteName?: string
 }
 
 export interface AnalysisRecord {
@@ -52,6 +54,24 @@ export interface PositionRequest {
   rules: Rules
   komi: number
 }
+
+export interface MoveExplanationResult {
+  explanation: string
+  aiModel: string
+  explainedAt: string
+}
+
+export interface MoveReviewRecord {
+  gameId: string
+  moveIndex: number
+  beforeAnalysis: AnalysisResult
+  afterAnalysis: AnalysisResult
+  explanation: string | null
+  aiModel: string | null
+  explainedAt: string | null
+}
+
+export type PlayerNames = Pick<GameRecord, 'blackName' | 'whiteName'>
 
 export interface ExplanationResult {
   candidateIndex: number

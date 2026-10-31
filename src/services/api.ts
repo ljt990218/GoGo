@@ -1,4 +1,4 @@
-import type { AnalysisResult, ExplanationResult, PositionRequest } from '../domain/types'
+import type { AnalysisResult, ExplanationResult, MoveExplanationResult, PositionRequest } from '../domain/types'
 
 async function post<T>(path: string, body: unknown, timeout: number): Promise<T> {
   const controller = new AbortController()
@@ -39,6 +39,10 @@ export function analyzePosition(request: PositionRequest) {
 
 export function explainPosition(request: PositionRequest, analysis: AnalysisResult, candidateIndex = 0) {
   return post<ExplanationResult>('/api/explain', { ...request, analysis, candidateIndex }, 70_000)
+}
+
+export function explainMove(request: PositionRequest, beforeAnalysis: AnalysisResult, afterAnalysis: AnalysisResult) {
+  return post<MoveExplanationResult>('/api/explain-move', { ...request, beforeAnalysis, afterAnalysis }, 70_000)
 }
 
 export interface AnalysisSettings {

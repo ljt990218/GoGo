@@ -67,3 +67,15 @@ class ExplanationResult(Contract):
     explanation: str
     aiModel: str
     explainedAt: str
+
+
+class ExplainMoveRequest(PositionRequest):
+    moveIndex: Annotated[StrictInt, Field(ge=1)]
+    beforeAnalysis: AnalysisResult
+    afterAnalysis: AnalysisResult
+
+
+class MoveExplanationResult(Contract):
+    explanation: str
+    aiModel: str
+    explainedAt: str

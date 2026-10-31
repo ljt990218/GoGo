@@ -1,17 +1,21 @@
-import type { AnalysisRecord, GameRecord } from '../domain/types'
+import type { AnalysisRecord, GameRecord, MoveReviewRecord } from '../domain/types'
 
 let database: Promise<IDBDatabase> | null = null
 
 function openDatabase(): Promise<IDBDatabase> {
   if (database) return database
   database = new Promise((resolve, reject) => {
-    const request = indexedDB.open('gogo-review', 2)
+    const request = indexedDB.open('gogo-review', 3)
     request.onupgradeneeded = event => {
       const db = request.result
       if (!db.objectStoreNames.contains('games')) db.createObjectStore('games', { keyPath: 'gameId' })
       if (!db.objectStoreNames.contains('analyses')) {
         const analyses = db.createObjectStore('analyses', { keyPath: ['gameId', 'moveIndex'] })
         analyses.createIndex('gameId', 'gameId')
+      }
+      if (!db.objectStoreNames.contains('moveReviews')) {
+        const reviews = db.createObjectStore('moveReviews', { keyPath: ['gameId', 'moveIndex'] })
+        reviews.createIndex('gameId', 'gameId')
       }
       if (event.oldVersion < 2) {
         request.transaction!.objectStore('analyses').openCursor().onsuccess = event => {
@@ -75,16 +79,34 @@ export function listAnalyses(gameId: string): Promise<AnalysisRecord[]> {
   })
 }
 
-export function analysisCounts(): Promise<Record<string, number>> {
-  return transaction(['analyses'], 'readonly', (tx, result) => {
-    const counts: Record<string, number> = {}
-    tx.objectStore('analyses').index('gameId').openKeyCursor().onsuccess = event => {
-      const cursor = (event.target as IDBRequest<IDBCursor | null>).result
-      if (!cursor) return result(counts)
-      const gameId = String(cursor.key)
-      counts[gameId] = (counts[gameId] ?? 0) + 1
-      cursor.continue()
+export function listMoveReviews(gameId: string): Promise<MoveReviewRecord[]> {
+  return transaction(['moveReviews'], 'readonly', (tx, result) => {
+    tx.objectStore('moveReviews').index('gameId').getAll(gameId).onsuccess = event => result((event.target as IDBRequest<MoveReviewRecord[]>).result)
+  })
+}
+
+export function saveMoveReview(record: MoveReviewRecord): Promise<void> {
+  return transaction(['games', 'moveReviews'], 'readwrite', tx => {
+    tx.objectStore('games').getKey(record.gameId).onsuccess = event => {
+      if ((event.target as IDBRequest).result === undefined) return tx.abort()
+      tx.objectStore('moveReviews').put(record)
     }
+  })
+}
+
+export function analysisCounts(): Promise<Record<string, number>> {
+  return transaction(['analyses', 'moveReviews'], 'readonly', (tx, result) => {
+    const counts: Record<string, number> = {}
+    for (const name of ['analyses', 'moveReviews']) {
+      tx.objectStore(name).index('gameId').openKeyCursor().onsuccess = event => {
+        const cursor = (event.target as IDBRequest<IDBCursor | null>).result
+        if (!cursor) return
+        const gameId = String(cursor.key)
+        counts[gameId] = (counts[gameId] ?? 0) + 1
+        cursor.continue()
+      }
+    }
+    result(counts)
   })
 }
 
@@ -119,13 +141,15 @@ export function saveExplanation(record: AnalysisRecord): Promise<void> {
 }
 
 export function deleteGame(gameId: string): Promise<void> {
-  return transaction(['games', 'analyses'], 'readwrite', tx => {
+  return transaction(['games', 'analyses', 'moveReviews'], 'readwrite', tx => {
     tx.objectStore('games').delete(gameId)
-    tx.objectStore('analyses').index('gameId').openCursor(IDBKeyRange.only(gameId)).onsuccess = event => {
-      const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result
-      if (cursor) {
-        cursor.delete()
-        cursor.continue()
+    for (const name of ['analyses', 'moveReviews']) {
+      tx.objectStore(name).index('gameId').openCursor(IDBKeyRange.only(gameId)).onsuccess = event => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result
+        if (cursor) {
+          cursor.delete()
+          cursor.continue()
+        }
       }
     }
   })

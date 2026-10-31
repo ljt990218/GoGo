@@ -1,15 +1,17 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import type { AnalysisRecord, GameRecord, PositionRequest, Rules } from '../domain/types'
+import type { AnalysisRecord, GameRecord, MoveReviewRecord, PlayerNames, PositionRequest, Rules } from '../domain/types'
 import { gameIdentity, parseGame, positionAt, readSgf, validKomi } from '../domain/sgf'
 import type { ParsedGame } from '../domain/sgf'
-import { validateAnalysis } from '../domain/results'
+import { validateAnalysis, validateExplanation } from '../domain/results'
 import * as storage from '../services/storage'
-import { analyzePosition, explainPosition, readSettings } from '../services/api'
+import { analyzePosition, explainMove, explainPosition, readSettings } from '../services/api'
+import { analyzeMove } from '../services/move-review'
 
 interface ImportDraft {
   fileName: string
   sgfText: string
   parsed: ParsedGame
+  names: PlayerNames
 }
 
 const recordKey = (gameId: string, moveIndex: number) => `${gameId}:${moveIndex}`
@@ -22,6 +24,9 @@ export function useReview() {
   const parsed = shallowRef<ParsedGame | null>(null)
   const moveIndex = ref(0)
   const records = shallowRef<Record<string, AnalysisRecord>>({})
+  const moveReviews = shallowRef<Record<string, MoveReviewRecord>>({})
+  const reviewErrors = ref<Record<string, string>>({})
+  const reviewSource = ref<Record<string, 'local' | 'fresh'>>({})
   const errors = ref<Record<string, string>>({})
   const unsaved = ref(new Set<string>())
   const dirtyGames = shallowRef(new Map<string, GameRecord>())
@@ -29,7 +34,7 @@ export function useReview() {
   const parsedGames = new Map<string, ParsedGame>()
   const loadedGames = new Set<string>()
   const source = ref<Record<string, 'local' | 'fresh'>>({})
-  const busy = ref<{ gameId: string, moveIndex: number, stage: 'analyzing' | 'explaining' } | null>(null)
+  const busy = ref<{ gameId: string, moveIndex: number, stage: 'analyzing' | 'explaining', kind?: 'move' } | null>(null)
   const batch = ref<{ gameId: string, fileName: string, index: number, end: number, stopping: boolean } | null>(null)
   const batchMessage = ref('')
   const batchStopMove = ref<number | null>(null)
@@ -50,6 +55,8 @@ export function useReview() {
   const currentGame = computed(() => games.value.find(game => game.gameId === currentId.value) ?? null)
   const key = computed(() => currentId.value ? recordKey(currentId.value, moveIndex.value) : '')
   const currentRecord = computed(() => records.value[key.value] ?? null)
+  const currentMoveReview = computed(() => moveReviews.value[key.value] ?? null)
+  const currentReviewError = computed(() => reviewErrors.value[key.value] ?? '')
   const position = computed(() => parsed.value ? positionAt(parsed.value, moveIndex.value) : null)
   const currentBusy = computed(() => busy.value?.gameId === currentId.value && busy.value.moveIndex === moveIndex.value ? busy.value.stage : null)
   const currentError = computed(() => errors.value[key.value] ?? '')
@@ -110,7 +117,7 @@ export function useReview() {
       parsed.value = nextParsed
       moveIndex.value = Math.max(0, Math.min(game.lastMoveIndex, nextParsed.moves.length))
       if (!loadedGames.has(game.gameId)) {
-        const saved = await storage.listAnalyses(game.gameId)
+        const [saved, savedReviews] = await Promise.all([storage.listAnalyses(game.gameId), storage.listMoveReviews(game.gameId)])
         if (disposed) return
         const nextRecords = { ...records.value }
         for (const record of saved) {
@@ -124,6 +131,19 @@ export function useReview() {
           }
         }
         records.value = nextRecords
+        const nextReviews = { ...moveReviews.value }
+        for (const record of savedReviews) {
+          if (!Number.isInteger(record.moveIndex) || record.moveIndex < 1 || record.moveIndex > nextParsed.moves.length) continue
+          validateAnalysis(record.beforeAnalysis, game.boardSize, record.moveIndex - 1, positionAt(nextParsed, record.moveIndex - 1).toPlay)
+          validateAnalysis(record.afterAnalysis, game.boardSize, record.moveIndex, positionAt(nextParsed, record.moveIndex).toPlay)
+          const target = recordKey(game.gameId, record.moveIndex)
+          savedKeys.add(`move:${target}`)
+          if (!nextReviews[target]) {
+            nextReviews[target] = record
+            reviewSource.value[target] = 'local'
+          }
+        }
+        moveReviews.value = nextReviews
         loadedGames.add(game.gameId)
       }
       if (version !== openVersion || disposed) return
@@ -147,14 +167,17 @@ export function useReview() {
     void persistGame(updated)
   }
 
-  async function importFile(file: File) {
+  async function importFile(file: File, names: PlayerNames = {}) {
     if (importing.value || draft.value) return
     importing.value = true
     importError.value = ''
     try {
       const sgfText = await readSgf(file)
       const parsed = parseGame(sgfText)
-      const pending = { fileName: file.name, sgfText, parsed }
+      const playerNames: PlayerNames = {}
+      if (names.blackName?.trim()) playerNames.blackName = names.blackName.trim()
+      if (names.whiteName?.trim()) playerNames.whiteName = names.whiteName.trim()
+      const pending = { fileName: file.name, sgfText, parsed, names: playerNames }
       if (parsed.rules === null || parsed.komi === null) draft.value = pending
       else await commitImport(pending, parsed.rules, parsed.komi)
     } catch (error) {
@@ -169,9 +192,11 @@ export function useReview() {
     const gameId = await gameIdentity(pending.sgfText, rules, komi)
     const existing = games.value.find(game => game.gameId === gameId) ?? await storage.getGame(gameId)
     if (existing) {
-      replaceGame(existing)
+      const updated = { ...existing, ...pending.names }
+      await persistGame(updated)
+      replaceGame(updated)
       draft.value = null
-      await openGame(existing)
+      await openGame(updated)
       return
     }
     const now = new Date().toISOString()
@@ -179,7 +204,7 @@ export function useReview() {
       gameId, fileName: pending.fileName, sgfText: pending.sgfText,
       boardSize: pending.parsed.boardSize, rules, komi,
       totalMoves: pending.parsed.moves.length, lastMoveIndex: 0,
-      createdAt: now, lastOpenedAt: now
+      createdAt: now, lastOpenedAt: now, ...pending.names
     }
     // 导入必须完成事务后才替换当前棋谱。
     await storage.saveGame(game)
@@ -264,6 +289,65 @@ export function useReview() {
     }
   }
 
+  async function persistMoveReview(record: MoveReviewRecord) {
+    const target = recordKey(record.gameId, record.moveIndex)
+    const saveKey = `move:${target}`
+    unsaved.value.add(saveKey)
+    try {
+      await storage.saveMoveReview(record)
+      if (!savedKeys.has(saveKey)) {
+        savedKeys.add(saveKey)
+        counts.value[record.gameId] = (counts.value[record.gameId] ?? 0) + 1
+      }
+      if (moveReviews.value[target] === record) {
+        unsaved.value.delete(saveKey)
+        if (reviewErrors.value[target] === '点评尚未保存，请重试保存') delete reviewErrors.value[target]
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function runMoveReview(explanationOnly = false) {
+    const game = currentGame.value
+    const snapshot = position.value
+    const index = moveIndex.value
+    if (!game || !snapshot?.lastMove || index < 1 || busy.value || batch.value || loadingGame.value || saving.value || deletingId.value === game.gameId) return
+    const target = recordKey(game.gameId, index)
+    let record = moveReviews.value[target]
+    if (explanationOnly && !record) return
+    const request: PositionRequest = { sgfText: game.sgfText, moveIndex: index, rules: game.rules, komi: game.komi }
+    busy.value = { gameId: game.gameId, moveIndex: index, stage: explanationOnly ? 'explaining' : 'analyzing', kind: 'move' }
+    delete reviewErrors.value[target]
+    try {
+      if (!explanationOnly) {
+        const result = await analyzeMove(request, game.gameId, game.boardSize, snapshot.lastMove.player, () => !disposed)
+        if (!result || disposed) return
+        record = result
+        moveReviews.value = { ...moveReviews.value, [target]: record }
+        reviewSource.value[target] = 'fresh'
+        await persistMoveReview(record)
+      }
+      if (!record || disposed) return
+      busy.value = { gameId: game.gameId, moveIndex: index, stage: 'explaining', kind: 'move' }
+      const explanation = await explainMove(request, record.beforeAnalysis, record.afterAnalysis)
+      if (disposed) return
+      validateExplanation(explanation)
+      const complete: MoveReviewRecord = { ...record, ...explanation }
+      moveReviews.value = { ...moveReviews.value, [target]: complete }
+      if (!await persistMoveReview(complete)) {
+        reviewErrors.value[target] = '点评尚未保存，请重试保存'
+      }
+    } catch (error) {
+      if (disposed) return
+      const prefix = busy.value?.stage === 'explaining' ? '解释生成失败，已保留引擎结果。' : record ? '本次刷新失败，保留原有点评。' : ''
+      reviewErrors.value[target] = `${prefix}${messageOf(error)}`
+    } finally {
+      busy.value = null
+    }
+  }
+
   function stopBatch() {
     if (batch.value) batch.value.stopping = true
   }
@@ -322,8 +406,13 @@ export function useReview() {
     try {
       for (const game of dirtyGames.value.values()) await persistGame(game)
       for (const target of [...unsaved.value]) {
-        const record = records.value[target]
-        if (record && deletingId.value !== record.gameId) await persistRecord(record)
+        if (target.startsWith('move:')) {
+          const record = moveReviews.value[target.slice(5)]
+          if (record && deletingId.value !== record.gameId) await persistMoveReview(record)
+        } else {
+          const record = records.value[target]
+          if (record && deletingId.value !== record.gameId) await persistRecord(record)
+        }
       }
       if (!dirtyGames.value.size) storageError.value = ''
     } finally {
@@ -355,6 +444,16 @@ export function useReview() {
         unsaved.value.delete(target)
       }
       records.value = nextRecords
+      const nextReviews = { ...moveReviews.value }
+      for (const target of Object.keys(nextReviews)) {
+        if (nextReviews[target].gameId !== game.gameId) continue
+        delete nextReviews[target]
+        delete reviewErrors.value[target]
+        delete reviewSource.value[target]
+        savedKeys.delete(`move:${target}`)
+        unsaved.value.delete(`move:${target}`)
+      }
+      moveReviews.value = nextReviews
       parsedGames.delete(game.gameId)
       loadedGames.delete(game.gameId)
       const dirty = new Map(dirtyGames.value)
@@ -394,6 +493,7 @@ export function useReview() {
   })
 
   return {
+    currentMoveReview, currentReviewError, reviewSource, runMoveReview,
     games: sortedGames, counts, currentGame, parsed, moveIndex, position, currentRecord, currentBusy,
     batch, batchMessage, batchStopMove, batchSettingsLoading, batchSettingsError, loadBatchSettings, runBatch, stopBatch, currentError, busy, initializing, loadingGame, importing, importError, draft, storageError,
     deleteTarget, deletingId, saving, unsaved, dirtyGames, source, key,
