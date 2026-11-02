@@ -102,8 +102,8 @@ p { line-height: 1.8; }
 .review-shell .settings-button { width: 34px; height: 34px; }
 .review-status-button { display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 210px; padding: 6px 10px; border: 1px solid #ddcfaf; border-radius: 5px; background: #f5f0e1; color: #85642d; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-status-button .status-dot { background: #a47c39; }
-.workspace { display: grid; grid-template-columns: minmax(0, 3fr) minmax(480px, 2fr); gap: 24px; min-height: calc(100dvh - 56px); padding: 16px 24px; }
-.board-panel { --board-width: min(100%, calc(100dvh - 208px)); min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; min-height: calc(100dvh - 56px); padding: 12px; }
+.board-panel { --board-width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: center; }
 .game-players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; width: var(--board-width); margin-bottom: 10px; flex-shrink: 0; }
 .game-player { display: flex; align-items: flex-start; gap: 7px; min-width: 0; color: var(--green); font-size: 12px; line-height: 20px; }
 .game-player .stone-dot { margin-top: 3px; }
@@ -129,6 +129,9 @@ p { line-height: 1.8; }
 .stone-dot.black { background: radial-gradient(circle at 30% 25%, #687267, #1e2a21 75%); border: 1px solid #263329; }
 .stone-dot.white { background: radial-gradient(circle at 30% 25%, #fff, #eeeede 80%); border: 1px solid #929d87; box-shadow: 0 1px 2px #27382d20; }
 .analysis-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 640px; padding: 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+.analysis-panel-body { display: flex; flex-direction: column; flex: 1; gap: 12px; min-width: 0; }
+.analysis-panel-body:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.analysis-panel-body > .explanation-section { flex: 1 0 auto; }
 .analysis-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; flex-shrink: 0; }
 .recommendation-point { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 32px; line-height: 1.1; font-weight: 600; letter-spacing: -.8px; }
 .analysis-context { text-align: right; flex-shrink: 0; }
@@ -303,11 +306,40 @@ p { line-height: 1.8; }
 .settings-test-stage.failed { border-color: #d2a198; background: #fbefeb; }
 .settings-test-stage.skipped { color: var(--muted); }
 
-/* 桌面首屏固定高度；矮视口与移动端保留自然阅读空间 */
-@media (min-width: 1100px) and (min-height: 768px) {
-  .review-shell { height: 100dvh; min-height: 0; display: flex; flex-direction: column; }
-  .workspace { flex: 1; min-height: 0; }
-  .analysis-panel { min-height: 0; height: 100%; }
+/* 桌面棋盘占满可用空间，分析内容在右栏内部滚动 */
+@media (min-width: 1100px) {
+  .review-shell {
+    --review-header-height: 56px;
+    --workspace-padding: 12px;
+    --board-players-height: 20px;
+    --board-controls-height: 34px;
+    --board-gap: 8px;
+    height: 100dvh;
+    min-height: 0;
+    display: flex;
+    flex-direction: column
+  }
+  .review-shell .app-header { height: var(--review-header-height); }
+  .workspace { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); padding: var(--workspace-padding); }
+  .board-panel {
+    --board-width: min(100%, calc(100dvh - var(--review-header-height) - var(--workspace-padding) * 2 - var(--board-players-height) - var(--board-controls-height) - var(--board-gap) * 2));
+    min-height: 0;
+    gap: var(--board-gap)
+  }
+  .game-players { height: var(--board-players-height); margin: 0; }
+  .game-player { align-items: center; }
+  .game-player .stone-dot { margin-top: 0; }
+  .game-player > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board-stage { flex: none; align-items: flex-start; }
+  .board-surface { aspect-ratio: 1; }
+  .position-controls { height: var(--board-controls-height); min-height: 0; margin: 0; }
+  .analysis-panel { min-height: 0; height: 100%; overflow: hidden; }
+  .analysis-panel-body { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior-y: contain; }
+  .analysis-panel-body > * { flex-shrink: 0; }
+  .candidate-row { grid-template-columns: minmax(0, 1fr) 68px 90px; min-height: 40px; padding: 4px 6px; }
+  .candidate-row > span { min-width: 0; }
+  .candidate-select { white-space: nowrap; }
+  .table-head { min-height: 28px; white-space: normal; line-height: 1.5; }
 }
 @media (max-width: 1199px) {
   .home-page { grid-template-columns: minmax(0, 1fr); }

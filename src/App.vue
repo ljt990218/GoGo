@@ -21,6 +21,8 @@ const {
   deletingId, saving, unsaved, dirtyGames, source, key, initialize, openGame, navigate,
   importFile, confirmImport, runAnalysis, retrySave, confirmDelete
 } = useReview()
+const blackPlayerName = computed(() => currentGame.value?.blackName?.trim() || parsed.value?.blackName || '未提供昵称')
+const whitePlayerName = computed(() => currentGame.value?.whiteName?.trim() || parsed.value?.whiteName || '未提供昵称')
 // 试下仅保存在当前页面内存，不修改真实棋谱或分析记录。
 const trialPositions = shallowRef<NonNullable<typeof position.value>[]>([])
 const trialError = ref('')
@@ -426,8 +428,8 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
       <template v-if='page === "analysis" && currentGame && parsed && position'>
         <section class='board-panel' aria-label='棋谱浏览'>
           <div class='game-players' aria-label='对局棋手'>
-            <span class='game-player'><span class='stone-dot black' aria-hidden='true'></span><span>黑棋 · {{ currentGame.blackName?.trim() || parsed.blackName || '未提供昵称' }}</span></span>
-            <span class='game-player'><span class='stone-dot white' aria-hidden='true'></span><span>白棋 · {{ currentGame.whiteName?.trim() || parsed.whiteName || '未提供昵称' }}</span></span>
+            <span class='game-player'><span class='stone-dot black' aria-hidden='true'></span><span :title='blackPlayerName'>黑棋 · {{ blackPlayerName }}</span></span>
+            <span class='game-player'><span class='stone-dot white' aria-hidden='true'></span><span :title='whitePlayerName'>白棋 · {{ whitePlayerName }}</span></span>
           </div>
           <div class='board-stage'>
             <GoBoard :size='currentGame.boardSize' :board='boardPosition!.board' :last-point='boardPosition!.lastMove?.point ?? null' :candidates='analysisMode === "position" ? displayedRecord?.analysis.candidates ?? [] : []' :to-play='boardPosition!.toPlay' @play='playTrial' :selected-index='selectedCandidateIndex' :highlighted-point='highlightedPoint' :variation='previewVariation' @select-candidate='selectCandidate' @exit-preview='clearPreview' />
