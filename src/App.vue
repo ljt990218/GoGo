@@ -233,7 +233,6 @@ function closeAnalysisDetails() {
   analysisDetailsOpen.value = false
   highlightedPoint.value = null
 }
-const settingsVersion = ref(0)
 const selectedCandidateIndex = ref(0)
 const batchEnd = computed(() => currentGame.value && batchStopMove.value !== null ? Math.min(batchStopMove.value, currentGame.value.totalMoves) : null)
 const highlightedPoint = ref<Point | null>(null)
@@ -267,8 +266,7 @@ function previewLine(candidate: Candidate) {
   selectedCandidateIndex.value = index
   previewVariation.value = candidate
 }
-function settingsSaved(source: 'home' | 'dialog') {
-  if (source === 'dialog') settingsVersion.value++
+function settingsSaved() {
   void loadBatchSettings()
 }
 function exitPreview(event: KeyboardEvent) {
@@ -364,10 +362,6 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
         </button>
         <button v-if='page === "analysis"' class='button secondary' @click='goHome'>← 我的棋谱</button>
         <span v-else class='local-caption'><span class='status-dot'></span>棋谱保存在本机</span>
-        <button v-if='page === "home"' class='button primary' :disabled='importing || initializing || !!deletingId' @click='fileInput?.click()'>
-          <svg viewBox='0 0 20 20' width='17' height='17' fill='none' aria-hidden='true'><path d='M10 13V3m-4 4 4-4 4 4M4 12v5h12v-5' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' /></svg>
-          {{ importing ? '导入中…' : '导入棋谱' }}
-        </button>
         <input ref='fileInput' type='file' accept='.sgf' class='visually-hidden' tabindex='-1' @change='selectFile' />
       </div>
     </header>
@@ -398,28 +392,27 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
           <p>从一盘棋开始，找到下一手的方向。</p>
         </div>
         <div class='home-intro-actions'>
-          <button class='button primary' :disabled='importing || initializing || !!deletingId' @click='fileInput?.click()'>＋ 导入 SGF 棋谱</button>
+          <button class='button primary' :disabled='importing || initializing || !!deletingId' @click='fileInput?.click()'>
+            <svg viewBox='0 0 20 20' width='17' height='17' fill='none' aria-hidden='true'><path d='M10 13V3m-4 4 4-4 4 4M4 12v5h12v-5' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' /></svg>
+            {{ importing ? '导入中…' : '导入 SGF 棋谱' }}
+          </button>
           <span class='micro'>支持 9 / 13 / 19 路 · 最大 2 MB</span>
         </div>
       </section>
-      <OnlineGameRecords v-if='page === "home"' :import-disabled='importing || initializing || !!deletingId || loadingGame' :load-game='importGame' />
-      <section v-if='page === "home"' class='home-settings'>
-        <details>
-          <summary>项目分析配置<span class='home-settings-caption'>引擎、AI 与分析参数</span></summary>
-          <div :inert='!!batch || !!busy || !!trialStage'><AnalysisSettings :key='settingsVersion' @saved='settingsSaved("home")' /></div>
-        </details>
-      </section>
+      <OnlineGameRecords v-if='page === "home"' class='home-online-records' :import-disabled='importing || initializing || !!deletingId || loadingGame' :load-game='importGame' />
       <aside v-if='page === "home"' class='library' aria-label='本地棋谱列表'>
-        <div class='library-heading'><h2>历史棋谱</h2><span>{{ games.length.toString().padStart(2, '0') }}</span></div>
+        <div class='library-heading'><h2>本地棋谱</h2><span>{{ games.length.toString().padStart(2, '0') }}</span></div>
         <p class='micro library-caption'>继续上次复盘，或导入新的棋谱。</p>
         <p v-if='initializing' class='muted library-placeholder' role='status'>正在读取本地棋谱…</p>
         <p v-else-if='!games.length' class='muted library-placeholder'>还没有棋谱。<br />导入第一盘，开始复盘。</p>
         <ul v-else class='game-list'>
           <li v-for='game in games' :key='game.gameId' :class='["game-item", { selected: game.gameId === currentGame?.gameId }]'>
             <button class='game-open' :disabled='deletingId === game.gameId' :aria-current='game.gameId === currentGame?.gameId ? "true" : undefined' @click='enterGame(game)'>
-              <span class='game-file-name'>{{ game.fileName }}</span>
-              <span class='game-meta'>{{ game.boardSize }} 路 · {{ game.totalMoves }} 手</span>
-              <span class='game-saved'>{{ counts[game.gameId] ?? 0 }} 个已保存分析</span>
+              <span class='game-file-name' :title='game.fileName'>{{ game.fileName }}</span>
+              <span class='game-info'>
+                <span class='game-meta'>{{ game.boardSize }} 路 · {{ game.totalMoves }} 手</span>
+                <span class='game-saved'>{{ counts[game.gameId] ?? 0 }} 个已保存分析</span>
+              </span>
               <span class='game-date'>最近打开 {{ time(game.lastOpenedAt) }}</span>
             </button>
             <button class='delete-game' :disabled='busy?.gameId === game.gameId || batch?.gameId === game.gameId || !!trialStage || !!deletingId || saving || loadingGame || importing' :aria-label='`删除 ${game.fileName}`' title='删除棋谱' @click='deleteTarget = game'>
@@ -427,7 +420,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
             </button>
           </li>
         </ul>
-        <div class='library-footer'><span class='section-label'>本地棋谱库</span><p>棋谱与分析保存在当前浏览器。清除网站数据会同时删除这些记录。</p></div>
+        <div class='library-footer'><p>棋谱与分析保存在当前浏览器。清除网站数据会同时删除这些记录。</p></div>
       </aside>
 
       <template v-if='page === "analysis" && currentGame && parsed && position'>
@@ -505,7 +498,7 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { month:
     <div class='dialog-actions'><button class='button secondary' @click='statusOpen = false'>关闭</button></div>
   </AppDialog>
   <AppDialog v-if='settingsOpen' title='分析设置' @close='settingsOpen = false'>
-    <AnalysisSettings @saved='settingsSaved("dialog")' />
+    <AnalysisSettings @saved='settingsSaved' />
     <div class='dialog-actions'><button class='button secondary' @click='settingsOpen = false'>关闭</button></div>
   </AppDialog>
   <AppDialog v-if='draft' title='确认棋谱信息' :locked='importing' @close='draft = null'>

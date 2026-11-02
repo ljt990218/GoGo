@@ -47,39 +47,48 @@ p { line-height: 1.8; }
 .local-caption { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 
 /* 本地棋谱库 */
-.home-shell .app-header { height: 58px; padding: 0 28px; }
+.home-shell {
+  --home-text-size: 14px;
+  --home-meta-size: 12px;
+  --home-heading-size: 18px;
+  --home-line: #e6e9df;
+}
+.home-shell .micro, .home-shell .section-label, .home-shell .local-caption { font-size: var(--home-meta-size); }
+.home-shell .muted { font-size: var(--home-text-size); }
+.home-shell .app-header { height: 58px; padding: 0 max(32px, calc((100% - 1296px) / 2)); }
 .home-shell .brand { font-size: 22px; gap: 10px; }
 .home-shell .brand-caption { font-size: 12px; margin-left: 14px; }
 .home-shell .header-actions { gap: 16px; }
-.home-shell .header-actions .button { min-height: 36px; padding: 7px 14px; }
 .home-shell .settings-button { width: 36px; height: 36px; }
-.home-page { max-width: 1200px; margin: 0 auto; padding: 0 28px 28px; }
-.home-intro { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 30px 0 26px; border-bottom: 1px solid var(--line); }
+.home-page { display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 3fr); align-items: start; gap: 32px; max-width: 1360px; margin: 0 auto; padding: 0 32px 32px; font-size: var(--home-text-size); }
+.home-intro { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 32px; padding: 24px 0; border-bottom: 1px solid var(--home-line); }
 .home-intro-copy { min-width: 0; }
-.home-intro h1 { font-family: 'Songti SC', 'STSong', serif; font-size: clamp(26px, 2.8vw, 34px); font-weight: 500; margin: 10px 0 8px; letter-spacing: 1px; }
-.home-intro p { color: var(--muted); font-size: 13px; }
+.home-intro h1 { font-family: 'Songti SC', 'STSong', serif; font-size: 32px; font-weight: 500; margin: 8px 0; letter-spacing: 1px; }
+.home-intro p { color: var(--muted); font-size: var(--home-text-size); }
 .home-intro-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
-.home-intro-actions .micro { font-size: 11px; }
-.library { padding-top: 22px; }
+.home-intro-actions .button { min-height: 44px; padding: 10px 16px; font-size: var(--home-text-size); }
+.home-shell .home-page > .home-online-records { min-width: 0; padding: 0; border: 0; }
+.library { min-width: 0; padding-left: 24px; border-left: 1px solid var(--home-line); }
 .library-heading { display: flex; justify-content: space-between; align-items: center; }
-.library-heading h2 { font-size: 18px; }
-.library-heading > span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.library-caption { margin-top: 6px; margin-bottom: 14px; }
-.library-placeholder { padding: 20px 0; line-height: 2; }
-.game-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.game-item { position: relative; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
-.game-item.selected { background: #e8ecdf; border-color: #c7d2bd; }
-.game-item:hover { border-color: #94a78d; background: #f0f3e9; }
-.game-open { display: flex; flex-direction: column; width: 100%; text-align: left; border: none; background: transparent; padding: 16px 40px 16px 16px; min-height: 138px; height: 100%; color: inherit; border-radius: inherit; }
-.game-file-name { width: 100%; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-.game-meta, .game-saved { font-size: 12px; line-height: 1.8; color: var(--muted); }
-.game-saved { color: #496a48; }
-.game-date { font-size: 11px; color: var(--muted); margin-top: auto; padding-top: 10px; }
+.library-heading h2 { font-size: var(--home-heading-size); }
+.library-heading > span { font-size: var(--home-meta-size); color: var(--muted); font-variant-numeric: tabular-nums; }
+.library-caption { margin-top: 8px; margin-bottom: 16px; }
+.library-placeholder { padding: 24px 0; line-height: 2; }
+.game-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
+.game-item { position: relative; min-width: 0; border-bottom: 1px solid var(--home-line); border-radius: 6px; }
+.game-item:last-child { border-bottom: 0; }
+.game-item.selected { background: #e8ecdf; box-shadow: inset 3px 0 var(--green); }
+.game-item:hover { background: #f0f3e9; }
+.game-open { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; border: none; background: transparent; padding: 16px 48px 16px 16px; color: inherit; border-radius: inherit; }
+.game-file-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; overflow-wrap: anywhere; font-size: var(--home-text-size); font-weight: 600; line-height: 1.6; }
+.game-info { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.game-meta, .game-saved { font-size: var(--home-meta-size); line-height: 1.8; color: var(--muted); }
+.game-saved { padding: 1px 8px; border-radius: 4px; background: #edf0e7; color: #496a48; }
+.game-date { font-size: var(--home-meta-size); color: var(--muted); }
 .delete-game { position: absolute; right: 8px; top: 8px; color: var(--muted); background: transparent; border: 0; border-radius: 4px; width: 28px; height: 32px; display: grid; place-items: center; }
 .delete-game:hover:not(:disabled) { color: #9b493e; background: #f0ded7; }
-.library-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
-.library-footer .section-label { display: none; }
-.library-footer p { color: var(--muted); font-size: 12px; }
+.library-footer { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--home-line); }
+.library-footer p { color: var(--muted); font-size: var(--home-meta-size); }
 
 /* 首屏复盘：棋盘与单张分析结果卡 */
 .review-shell .app-header { height: 56px; flex-shrink: 0; padding: 0 24px; }
@@ -271,10 +280,6 @@ p { line-height: 1.8; }
 .form-field input, .form-field select { height: 42px; border: 1px solid #c5cebe; border-radius: 6px; padding: 0 11px; color: #3c5131; background: #fffefa; }
 .form-field input:disabled, .form-field select:disabled { background: #ecefe3; color: var(--muted); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 26px; }
-.home-settings { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
-.home-settings > details > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
-.home-settings-caption { margin-left: 12px; color: var(--muted); font-size: 12px; font-weight: 400; }
-.home-settings .settings-panel { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .settings-fields { padding: 0; margin: 0; border: 0; min-width: 0; }
 .settings-numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .settings-panel .form-field input { width: 100%; min-width: 0; }
@@ -298,34 +303,15 @@ p { line-height: 1.8; }
 .settings-test-stage.failed { border-color: #d2a198; background: #fbefeb; }
 .settings-test-stage.skipped { color: var(--muted); }
 
-/* 首页展开配置采用紧凑网格，弹窗继续沿用原布局。 */
-.home-settings .settings-panel > form > .micro:first-child { margin-bottom: 12px; }
-.home-settings .settings-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
-.home-settings .form-field { min-width: 0; margin: 0; gap: 6px; font-size: 12px; }
-.home-settings .form-field input { height: 38px; }
-.home-settings .settings-numbers { display: contents; }
-.home-settings .engine-setup { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 14px; }
-.home-settings .engine-setup h3 { margin-bottom: 6px; font-size: 14px; }
-.home-settings .engine-options { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0 8px; }
-.home-settings .engine-option { min-width: 0; padding: 10px; }
-.home-settings .engine-option input { flex-shrink: 0; }
-.home-settings .engine-option small { line-height: 1.6; }
-.home-settings .engine-setup > .notice { padding: 8px 0; }
-.home-settings .engine-setup > .button { min-height: 36px; margin-top: 8px; padding: 7px 12px; }
-.home-settings .engine-setup > .text-button { margin-left: 14px; }
-.home-settings .engine-advanced { margin-top: 12px; }
-.home-settings .engine-advanced .form-field { margin-top: 12px; }
-.home-settings .settings-footer { gap: 10px; margin: 14px 0 8px; }
-.home-settings .settings-footer .button { min-height: 36px; padding: 7px 14px; }
-.home-settings .settings-test-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 0; }
-.home-settings .settings-test-stage { min-width: 0; margin: 0; }
-.home-settings .settings-test-results > p, .home-settings .settings-test-results > button { grid-column: 1 / -1; }
-
 /* 桌面首屏固定高度；矮视口与移动端保留自然阅读空间 */
 @media (min-width: 1100px) and (min-height: 768px) {
   .review-shell { height: 100dvh; min-height: 0; display: flex; flex-direction: column; }
   .workspace { flex: 1; min-height: 0; }
   .analysis-panel { min-height: 0; height: 100%; }
+}
+@media (max-width: 1199px) {
+  .home-page { grid-template-columns: minmax(0, 1fr); }
+  .library { padding: 24px 0 0; border-left: 0; border-top: 1px solid var(--home-line); }
 }
 @media (max-width: 1099px) {
   .workspace { grid-template-columns: minmax(0, 1fr) minmax(380px, 44%); gap: 16px; padding: 16px; }
@@ -334,7 +320,6 @@ p { line-height: 1.8; }
   .position-controls { flex-wrap: wrap; justify-content: space-between; gap: 6px; }
   .move-slider { order: 1; flex-basis: 100%; }
   .brand-caption { display: none; }
-  .game-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 820px) {
   .workspace { display: flex; flex-direction: column; align-items: stretch; }
@@ -353,19 +338,13 @@ p { line-height: 1.8; }
   .header-actions .button { padding: 8px 12px; font-size: 12px; }
   .home-shell .app-header { padding: 0 16px; }
   .home-shell .header-actions { gap: 10px; }
-  .home-page { padding: 0 16px 22px; }
-  .home-intro { flex-direction: column; align-items: flex-start; gap: 16px; padding: 24px 0 20px; }
+  .home-page { gap: 24px; padding: 0 16px 22px; }
+  .home-intro { flex-direction: column; align-items: flex-start; gap: 16px; padding: 22px 0 20px; }
   .home-intro h1 { letter-spacing: 0; }
   .home-intro-actions { align-items: flex-start; }
-  .game-list { grid-template-columns: 1fr; gap: 10px; }
-  .game-open { min-height: 128px; padding: 14px 40px 14px 14px; }
   .analysis-panel { padding: 16px; }
   .analysis-context > .micro { font-size: 10px; }
   .settings-numbers { grid-template-columns: 1fr; gap: 0; }
-  .home-settings { padding: 12px; }
-  .home-settings-caption { display: none; }
-  .home-settings .settings-fields, .home-settings .engine-options, .home-settings .settings-test-results { grid-template-columns: 1fr; }
-  .home-settings .engine-setup { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

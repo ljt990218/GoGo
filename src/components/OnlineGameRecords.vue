@@ -156,11 +156,10 @@ async function openRecord(chessId: string) {
     <div class='records-heading'>
       <div>
         <h2 id='online-records-title'>近期对局</h2>
-        <p class='micro'>按平台和账号查询公开棋谱，每页 10 条。自动回显上次结果，点击“查询对局”刷新。</p>
+        <p class='micro'>查询野狐公开棋谱，选择一盘开始复盘。</p>
       </div>
-      <span class='section-label'>云端棋谱</span>
     </div>
-    <form class='records-form' @submit.prevent='query(1)'>
+    <form class='records-form' aria-describedby='records-query-hint' @submit.prevent='query(1)'>
       <fieldset :disabled='actionsBusy'>
         <label>围棋平台
           <span class='platform-select'>
@@ -175,6 +174,7 @@ async function openRecord(chessId: string) {
         </label>
         <button type='submit' class='button primary' :disabled='!account.trim()'>{{ loading ? '查询中…' : '查询对局' }}</button>
       </fieldset>
+      <p id='records-query-hint' class='micro records-query-hint'>自动回显上次查询结果，点击“查询对局”刷新。</p>
     </form>
     <p v-if='loading' class='micro records-status' role='status'>正在查询对局记录…</p>
     <p v-if='error' class='notice error records-status' role='alert'>{{ error }}</p>
@@ -197,8 +197,8 @@ async function openRecord(chessId: string) {
                 <td><span class='record-result' :class='item.result'>{{ resultNames[item.result] }}</span></td>
                 <td class='records-meta'>{{ item.boardSize }} 路 · {{ item.moveCount }} 手</td>
                 <td class='record-actions'>
-                  <button type='button' class='text-button' :disabled='actionsBusy' :aria-label='`打开 ${item.blackName} 对 ${item.whiteName} 的复盘`' @click='openRecord(item.chessId)'>{{ openingId === item.chessId ? '打开中…' : '打开复盘' }}</button>
-                  <button type='button' class='text-button' :disabled='actionsBusy' :aria-label='`下载 ${item.blackName} 对 ${item.whiteName} 的 SGF 棋谱`' @click='download(item.chessId)'>{{ downloadingId === item.chessId ? '下载中…' : '下载 SGF' }}</button>
+                  <button type='button' class='button secondary record-open' :disabled='actionsBusy' :aria-label='`打开 ${item.blackName} 对 ${item.whiteName} 的复盘`' @click='openRecord(item.chessId)'>{{ openingId === item.chessId ? '打开中…' : '打开复盘' }}</button>
+                  <button type='button' class='text-button record-download' :disabled='actionsBusy' :aria-label='`下载 ${item.blackName} 对 ${item.whiteName} 的 SGF 棋谱`' @click='download(item.chessId)'>{{ downloadingId === item.chessId ? '下载中…' : '下载 SGF' }}</button>
                 </td>
               </tr>
             </tbody>
@@ -219,45 +219,46 @@ async function openRecord(chessId: string) {
 </template>
 
 <style scoped>
-.online-records { padding: 24px 0; border-bottom: 1px solid var(--line); }
-.records-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.records-heading h2 { margin-bottom: 5px; font-size: 18px; }
-.records-form { margin-top: 18px; }
-.records-form fieldset { display: grid; grid-template-columns: 160px minmax(0, 320px) auto; justify-content: start; align-items: end; gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; }
-.records-form label { display: flex; flex-direction: column; gap: 7px; min-width: 0; font-size: 12px; color: var(--muted); }
-.records-form input, .records-form select { width: 100%; min-height: 41px; padding: 9px 12px; border: 1px solid #c5cebe; border-radius: 6px; background: var(--paper); color: #27382d; font-size: 13px; }
+.online-records { min-width: 0; }
+.records-heading h2 { margin-bottom: 8px; font-size: var(--home-heading-size); }
+.records-form { margin-top: 16px; padding: 16px; border-radius: 8px; background: #eef1e8; }
+.records-form fieldset { display: grid; grid-template-columns: 136px minmax(0, 1fr) auto; align-items: end; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.records-form label { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: var(--home-meta-size); line-height: 20px; color: var(--muted); }
+.records-form input, .records-form select { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #c5cebe; border-radius: 6px; background: var(--paper); color: #27382d; font-size: var(--home-text-size); line-height: 22px; }
+.records-form .button { min-height: 44px; font-size: var(--home-text-size); white-space: nowrap; }
+.records-query-hint { margin-top: 8px; }
 .platform-select { position: relative; display: block; }
 .platform-select select { appearance: none; padding-right: 38px; }
 .platform-select svg { position: absolute; top: 50%; right: 14px; width: 12px; height: 12px; transform: translateY(-50%); color: #27382d; pointer-events: none; }
-.records-status { margin-top: 14px; }
-.records-summary { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; margin-top: 20px; font-size: 12px; color: var(--muted); }
-.records-summary strong { font-size: 13px; font-weight: 600; color: var(--green); }
-.records-empty { padding: 22px 0 4px; line-height: 1.8; }
-.records-table-wrap { margin-top: 12px; overflow-x: auto; border: 1px solid var(--line); border-radius: 7px; }
+.records-status { margin-top: 16px; }
+.records-summary { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-top: 24px; font-size: var(--home-meta-size); color: var(--muted); }
+.records-summary strong { font-size: var(--home-text-size); font-weight: 600; color: var(--green); }
+.records-empty { padding: 24px 0 8px; line-height: 1.8; }
+.records-table-wrap { margin-top: 16px; overflow-x: auto; border: 1px solid var(--home-line); border-radius: 8px; }
 .records-table-wrap:focus-visible { outline: 3px solid #57764e; outline-offset: 3px; }
-.records-table { width: 100%; min-width: 690px; border-collapse: collapse; background: var(--paper); font-size: 13px; text-align: left; }
-.records-table th { padding: 11px 14px; background: #edf0e7; color: var(--muted); font-size: 11px; font-weight: 500; white-space: nowrap; }
-.records-table td { padding: 12px 14px; border-top: 1px solid var(--line); }
+.records-table { width: 100%; min-width: 690px; border-collapse: collapse; background: var(--paper); font-size: var(--home-text-size); line-height: 1.6; text-align: left; }
+.records-table th { padding: 12px; background: #f3f4ed; color: var(--muted); font-size: var(--home-meta-size); font-weight: 500; white-space: nowrap; }
+.records-table td { padding: 12px; border-top: 1px solid var(--home-line); }
 .records-table tbody tr:hover { background: #f0f3e9; }
-.records-time { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
-.record-player { display: flex; align-items: center; gap: 7px; min-width: 85px; overflow-wrap: anywhere; }
+.records-time { font-size: var(--home-meta-size); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+.record-player { display: flex; align-items: center; gap: 8px; min-width: 80px; overflow-wrap: anywhere; font-weight: 500; }
 .record-stone { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; }
 .record-stone.black { background: #27382d; border: 1px solid #27382d; }
 .record-stone.white { background: #fff; border: 1px solid #a8b2a1; }
-.record-result { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 12px; white-space: nowrap; color: var(--muted); }
+.record-result { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: var(--home-meta-size); white-space: nowrap; color: var(--muted); }
 .record-result.win { background: #e5eddf; color: #315d49; }
 .record-result.loss { background: #f2e8df; color: #8b5b44; }
-.records-meta, .records-table .text-button { white-space: nowrap; font-size: 12px; }
-.records-meta { color: var(--muted); }
-.records-table .text-button { color: var(--green); }
+.records-meta { white-space: nowrap; font-size: var(--home-meta-size); color: var(--muted); }
 .record-actions { white-space: nowrap }
-.record-actions .text-button + .text-button { margin-left: 12px }
-.records-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 14px 0 10px; }
+.record-open { min-height: 32px; padding: 5px 10px; font-size: var(--home-meta-size); background: #e7eee2; border-color: #b9cbb0; white-space: nowrap; }
+.record-open:hover:not(:disabled) { background: #dce8d5; border-color: #91ab87; }
+.record-download { margin-left: 12px; font-size: var(--home-meta-size); color: var(--muted); text-decoration: none; white-space: nowrap; }
+.record-download:hover:not(:disabled) { color: var(--green); text-decoration: underline; }
+.records-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 16px 0 8px; }
 .records-pagination > div { display: flex; gap: 8px; }
-.records-pagination .button { min-height: 34px; padding: 6px 12px; font-size: 12px; }
+.records-pagination .button { min-height: 34px; padding: 6px 12px; font-size: var(--home-meta-size); }
 @media (max-width: 600px) {
   .records-form fieldset { grid-template-columns: 1fr; gap: 12px; }
-  .records-heading > .section-label { display: none; }
   .records-summary p span { display: block; }
 }
 </style>
